@@ -1,3 +1,4 @@
+module Scanner where
 import Data.Char
 data Token =
   --One character tokens
@@ -11,14 +12,53 @@ data Token =
   LESS |  LESS_EQUAL |
 
   --literals and user-defined names
-  IDENTIFIER String |  STRING String |  NUMBER Int |
+  IDENTIFIER String |  STRING String |  NUMBER Double |
 
   --Keywords
   AND |  CLASS |  ELSE |  FALSE |  FUN |  FOR |  IF |  NIL |  OR |
-  PRINT |  RETURN |  SUPER |  THIS |  TRUE |  VAR |  WHILE |
+  PRINT |  RETURN |  SUPER |  THIS |  TRUE |  VAR |  WHILE | EOF
+  deriving Eq
 
-  EOF
-  deriving Show
+instance Show Token where
+  show LEFT_PAREN = "("
+  show RIGHT_PAREN = ")"
+  show LEFT_BRACE = "{"
+  show RIGHT_BRACE = "}"
+  show COMMA = ","
+  show DOT = "."
+  show MINUS = "-"
+  show PLUS = "+"
+  show SEMICOLON = ";"
+  show SLASH = "/"
+  show STAR = "*"
+  show BANG = "!"
+  show BANG_EQUAL = "!="
+  show EQUAL = "="
+  show EQUAL_EQUAL = "=="
+  show GREATER = ">"
+  show GREATER_EQUAL = ">="
+  show LESS = "<"
+  show LESS_EQUAL = "<="
+  show (IDENTIFIER s) = s
+  show (STRING s) = "\"" ++ s ++ "\""
+  show (NUMBER i) = show i
+  show AND = "and"
+  show CLASS = "class"
+  show ELSE = "else"
+  show FALSE = "false"
+  show FUN = "fun"
+  show FOR = "for"
+  show IF = "if"
+  show NIL = "nil"
+  show OR = "or"
+  show PRINT = "print"
+  show RETURN = "return"
+  show SUPER = "super"
+  show THIS = "this"
+  show TRUE = "true"
+  show VAR = "var"
+  show WHILE = "while"
+  show EOF = "EOF"
 
 stripTilNewline :: String -> String
 stripTilNewline "" = ""
@@ -30,18 +70,15 @@ stripTilCommentEnd "" = ""
 stripTilCommentEnd ('*':'/':xs) = xs
 stripTilCommentEnd (_:xs) = stripTilCommentEnd xs
 
-append :: Token -> ([Token] -> Maybe [Token])
-append x = (\xs -> Just (x:xs))
-
 munchInt :: String -> String
 munchInt "" = ""
 munchInt xs =
-  if isDigit (head xs)
+  if isDigit (head xs) || (head xs) == '.'
     then head xs : munchInt (tail xs)
     else ""
 
 
-munchNum :: String -> (Int,String)
+munchNum :: String -> (Double,String)
 munchNum xs =
   let
     result = munchInt xs
@@ -84,10 +121,14 @@ getKeyword (IDENTIFIER "this") = THIS
 getKeyword (IDENTIFIER "true") = TRUE
 getKeyword (IDENTIFIER "var") = VAR
 getKeyword (IDENTIFIER "while") = WHILE
+getKeyword x = x
 
-tokenize :: String -> Maybe [Token]
+append :: (Monad m) => Token -> ([Token] -> m [Token])
+append x = (\xs -> return (x:xs))
 
-tokenize "" = Just [EOF]
+tokenize :: (Monad m) => String -> m [Token]
+
+tokenize "" = return [EOF]
 tokenize (' ':xs)     = tokenize xs
 tokenize ('\n':xs)    = tokenize xs
 tokenize ('\t':xs)    = tokenize xs
@@ -109,7 +150,9 @@ tokenize ('!':xs)     = tokenize xs >>= append BANG
 tokenize ('=':'=':xs) = tokenize xs >>= append EQUAL_EQUAL
 tokenize ('=':xs)     = tokenize xs >>= append EQUAL
 tokenize ('>':'=':xs) = tokenize xs >>= append GREATER_EQUAL
+tokenize ('>':xs)     = tokenize xs >>= append GREATER
 tokenize ('<':'=':xs) = tokenize xs >>= append LESS_EQUAL
+tokenize ('<':xs)     = tokenize xs >>= append LESS
 tokenize ('"':xs) =
   let
     (strLit,remaining) = munchStrLit xs
@@ -122,9 +165,7 @@ tokenize xs
   | isVarChar h =
     let
       r = munchVar xs
-    in tokenize (snd r) >>= append (IDENTIFIER (fst r))
-  | otherwise = Nothing
+    in tokenize (snd r) >>= append (getKeyword (IDENTIFIER (fst r)))
+  | otherwise = error ("Invalid char: "++[h])
   where
     h = head xs
-
-main = print (tokenize "var foo = 6;if (foo == 1) {print \"bar\";}")
