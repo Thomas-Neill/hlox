@@ -1,7 +1,16 @@
 module Parser where
 import Scanner
 import Debug.Trace
-data Expr = Literal Token | Unary Token Expr | Grouping Expr | Binary Expr Token Expr
+
+data LoxObject = String {toString::String} | Number {toDouble::Double} | Boolean {toBool::Bool} | Nil deriving Eq
+
+instance Show LoxObject where
+  show (String s) = "\"" ++ s ++ "\""
+  show (Number n) = show n
+  show (Boolean b) = show b
+  show Nil = "nil"
+
+data Expr = Literal LoxObject | Unary Token Expr | Grouping Expr | Binary Expr Token Expr
 
 instance Show Expr where
   show (Literal l) = show l
@@ -15,11 +24,11 @@ parse xs = do
   return result
 
 primary :: [Token] -> Either String (Expr,[Token])
-primary ((NUMBER n):xs) = return (Literal (NUMBER n),xs)
-primary ((STRING x):xs) = return (Literal (STRING x),xs)
-primary (FALSE:xs)      = return (Literal FALSE,xs)
-primary (TRUE:xs)       = return (Literal TRUE,xs)
-primary (NIL:xs)        = return (Literal NIL,xs)
+primary ((NUMBER n):xs) = return (Literal (Number n),xs)
+primary ((STRING x):xs) = return (Literal (String x),xs)
+primary (FALSE:xs)      = return (Literal (Boolean False),xs)
+primary (TRUE:xs)       = return (Literal (Boolean True),xs)
+primary (NIL:xs)        = return (Literal Nil,xs)
 primary (LEFT_PAREN:xs) = do
   (result,RIGHT_PAREN:remainder) <- equality xs
   return (Grouping result,remainder)
@@ -48,5 +57,3 @@ factor = generateRule unary [SLASH,STAR]
 term = generateRule factor [PLUS,MINUS]
 comparison = generateRule term [GREATER,GREATER_EQUAL,LESS,LESS_EQUAL]
 equality = generateRule comparison [BANG_EQUAL,EQUAL_EQUAL]
-
-main = print $ ((tokenize "-5*6+7>-2==true" :: Either String [Token]) >>= parse)
