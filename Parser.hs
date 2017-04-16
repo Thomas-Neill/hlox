@@ -6,9 +6,24 @@ data LoxObject = String {toString::String} | Number {toDouble::Double} | Boolean
 
 instance Show LoxObject where
   show (String s) = "\"" ++ s ++ "\""
-  show (Number n) = show n
+  show (Number n) = shownum n
   show (Boolean b) = show b
   show Nil = "nil"
+
+commonStart :: String -> String -> Bool
+commonStart "" x = True
+commonStart x "" = True
+commonStart (x:xs) (y:ys) = if x == y then commonStart xs ys else False
+
+commonEnding :: String -> String -> Bool
+commonEnding x y = commonStart (reverse x) (reverse y)
+
+shownum :: Double -> String
+shownum x =
+  let
+    str = show x
+    isInt = commonEnding str ".0"
+  in if isInt then init $ init str else str
 
 data Expr = Literal LoxObject | Unary Token Expr | Grouping Expr | Binary Expr Token Expr
 
@@ -18,12 +33,12 @@ instance Show Expr where
   show (Grouping e) = "(group " ++ show e ++ ")"
   show (Binary r t l) = "(" ++ show t ++ " " ++ show r ++ " " ++ show l ++ ")"
 
-parse :: [Token] -> Either String Expr
+parse :: (Monad m) => [Token] -> m Expr
 parse xs = do
   (result,[EOF]) <- equality xs
   return result
 
-primary :: [Token] -> Either String (Expr,[Token])
+primary :: (Monad m) => [Token] -> m (Expr,[Token])
 primary ((NUMBER n):xs) = return (Literal (Number n),xs)
 primary ((STRING x):xs) = return (Literal (String x),xs)
 primary (FALSE:xs)      = return (Literal (Boolean False),xs)
@@ -34,7 +49,7 @@ primary (LEFT_PAREN:xs) = do
   return (Grouping result,remainder)
 primary xs = fail ("Expected literal or identifier: " ++ (show (head xs)))
 
-unary :: [Token] -> Either String (Expr,[Token])
+unary :: (Monad m) => [Token] -> m (Expr,[Token])
 unary (BANG:xs) = do
   (result,remainder) <- unary xs
   return (Unary BANG result,remainder)
@@ -44,7 +59,7 @@ unary (MINUS:xs) = do
 unary xs = primary xs
 
 
-generateRule ::  ([Token] -> Either String (Expr,[Token]) ) -> [Token] -> [Token] -> Either String (Expr,[Token])
+generateRule :: (Monad m) =>  ([Token] -> m (Expr,[Token])) -> [Token] -> ([Token] -> m (Expr,[Token]))
 generateRule precedent munches tokens = do
   (result,remainder) <- precedent tokens
   if (head remainder) `elem` munches then do
@@ -53,7 +68,14 @@ generateRule precedent munches tokens = do
   else
     return (result,remainder)
 
+factor :: (Monad m) => [Token] -> m (Expr,[Token])
 factor = generateRule unary [SLASH,STAR]
+
+term :: (Monad m) => [Token] -> m (Expr,[Token])
 term = generateRule factor [PLUS,MINUS]
+
+comparison :: (Monad m) => [Token] -> m (Expr,[Token])
 comparison = generateRule term [GREATER,GREATER_EQUAL,LESS,LESS_EQUAL]
+
+equality :: (Monad m) => [Token] -> m (Expr,[Token])
 equality = generateRule comparison [BANG_EQUAL,EQUAL_EQUAL]

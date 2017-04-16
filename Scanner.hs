@@ -166,6 +166,6 @@ tokenize xs
     let
       r = munchVar xs
     in tokenize (snd r) >>= append (getKeyword (IDENTIFIER (fst r)))
-  | otherwise = error ("Invalid char: "++[h])
+  | otherwise = fail ("Invalid char: "++[h])
   where
     h = head xs

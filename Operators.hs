@@ -25,6 +25,7 @@ sub :: (Monad m) => LoxObject -> LoxObject -> m LoxObject
 sub (Number n) (Number n') = return $ Number $ n - n'
 
 divide :: (Monad m) => LoxObject -> LoxObject -> m LoxObject
+divide (Number n) (Number 0) = fail "You can't divide by zero!"
 divide (Number n) (Number n') = return $ Number $ n / n'
 divide a b = fail $ failmsg "/" a b
 
