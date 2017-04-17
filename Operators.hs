@@ -6,7 +6,7 @@ truthiness :: LoxObject -> LoxObject
 truthiness Nil = Boolean False
 truthiness (Number 0) = Boolean False
 truthiness (String "") = Boolean False
-truthiness _ = Boolean True
+truthiness Boolean x = Boolean x
 
 failmsg :: String -> LoxObject -> LoxObject -> String
 failmsg op a b = "Operation '" ++ op ++ "' is not supported with objects " ++ show a ++ " and " ++ show b ++ "."
