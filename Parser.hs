@@ -58,15 +58,20 @@ unary (MINUS:xs) = do
   return (Unary MINUS result,remainder)
 unary xs = primary xs
 
-
-generateRule :: (Monad m) =>  ([Token] -> m (Expr,[Token])) -> [Token] -> ([Token] -> m (Expr,[Token]))
+generateRule :: (Monad m) =>  ([Token] -> m (Expr,[Token])) -> [Token] -> [Token] -> m (Expr,[Token])
 generateRule precedent munches tokens = do
   (result,remainder) <- precedent tokens
-  if (head remainder) `elem` munches then do
-    (result',remainder') <- generateRule precedent munches (tail remainder)
-    return (Binary result (head remainder) result',remainder')
-  else
-    return (result,remainder)
+  (chunks,remainder') <- chunk precedent munches remainder
+  return (foldr (\x acc -> Binary acc (fst x) (snd x)) result chunks,remainder')
+  where
+    chunk :: (Monad m) =>  ([Token] -> m (Expr,[Token])) -> [Token] -> [Token] -> m ([(Token,Expr)],[Token])
+    chunk precedent munches tokens =
+      if (head tokens) `elem` munches then do
+        (result,remainder) <- precedent (tail tokens)
+        (result',remainder') <- chunk precedent munches remainder
+        return ((head tokens,result):result',remainder')
+      else
+        return ([],tokens)
 
 factor :: (Monad m) => [Token] -> m (Expr,[Token])
 factor = generateRule unary [SLASH,STAR]
