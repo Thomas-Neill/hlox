@@ -1,4 +1,4 @@
-module Evaluator where
+module Interpreter where
 import Parser
 import Operators
 import Scanner

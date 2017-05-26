@@ -1,7 +1,7 @@
-import Evaluator
+import Interpreter
 import Parser
 import Scanner
-import Utility
+import Result
 
 evalText :: String -> String
 evalText input = show $ (tokenize input :: Result [Token]) >>= parse >>= eval

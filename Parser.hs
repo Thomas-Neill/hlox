@@ -1,6 +1,5 @@
 module Parser where
 import Scanner
-import Debug.Trace
 
 data LoxObject = String {toString::String} | Number {toDouble::Double} | Boolean {toBool::Bool} | Nil deriving Eq
 

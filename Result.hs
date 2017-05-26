@@ -1,4 +1,4 @@
-module Utility where
+module Result where
 
 data Result a = Result a | Failure String
 
@@ -20,3 +20,13 @@ instance Monad Result where
 instance (Show a) => Show (Result a) where
   show (Result a) = show a
   show (Failure f) = "Error: " ++ f
+
+class ToResult m where
+  toResult :: m a -> Result a
+
+instance ToResult Maybe where
+  toResult = maybe (Failure "") (Result)
+
+result :: (String -> b) -> (a -> b) -> Result a -> b
+result _ resultfunc (Result a) = resultfunc a
+result failfunc _ (Failure msg) = failfunc msg
