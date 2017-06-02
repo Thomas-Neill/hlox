@@ -13,6 +13,7 @@ evalText input = let
       putStrLn $ "Error: " ++ errmsg
       return $ Failure errmsg
     (Result statements) -> composeList (map eval statements) $ Map.fromList []
+
 main = do
   putStr "lox.hs> "
   input <- getLine
