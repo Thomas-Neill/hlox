@@ -5,24 +5,39 @@ import Operators
 import Action
 import Result
 import Object
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
 
 find :: LValue -> LoxEnvironment -> Result LoxObject
-find (Name n) env = case Map.lookup n env of
+find (Name n) (Global env) = case Map.lookup n env of
         Nothing -> Failure $ "Variable '" ++ n ++ "' does not exist!"
         (Just obj) -> Result obj
 
+find n (Shadow parent env) = case find n (Global env) of
+        (Failure _) -> find n parent
+        (Result obj) -> Result obj
+
 set :: LValue -> LoxObject -> LoxEnvironment -> Result LoxEnvironment
-set (Name n) replacement env = if Map.notMember n env
+set (Name n) replacement (Global env) = if Map.notMember n env
   then Failure $ "Variable '" ++ n ++ "' does not exist!"
-  else Result $ Map.insert n replacement env
+  else Result $ Global $ Map.insert n replacement env
+
+set n replacement (Shadow parent env) = case set n replacement (Global env) of
+        (Failure _) -> case set n replacement parent of
+                        (Failure err) -> Failure err
+                        (Result parent') -> Result (Shadow parent' env)
+        (Result asglobal) -> (\(Global env')-> Result (Shadow parent env')) asglobal
 
 declare :: LValue -> LoxObject -> LoxEnvironment -> LoxEnvironment
-declare (Name n) value env = Map.insert n value env
+declare (Name n) value (Global env) = Global $ Map.insert n value env
 
+declare n value (Shadow parent env) =
+  let
+    env' = declare n value (Global env)
+  in case env' of
+    (Global env'') -> Shadow parent env''
 
 --BEHOLD, THE STAIRCASE OF DOOM
---TODO: fix this somehow... it works, and "..." really helps, but this is causing me pain
+--TODO: fix this somehow... it works, and "..." really helps, but this is still causing me pain
 evalExpr :: Expr ->  ReturnAction
 evalExpr (Literal l) = wrap l
 evalExpr (Grouping g) = evalExpr g
@@ -53,11 +68,14 @@ eval (Expression e) = \st -> evalExpr e st >>= (\wrapped' -> wrapped' ... (\(val
 eval (Print expr) = \st -> do
   wrapped <- evalExpr expr st
   case wrapped of
-    (Failure f) -> putStrLn $ "Error: " ++ f
+    (Failure f) -> return ()
     (Result (value,_)) -> print value
   wrapped ... (\(_,st')-> return $ Result st')
 eval (Declaration l expr) = \st -> do
   wrapped <- evalExpr expr st
-  case wrapped of
-    (Failure f) -> return $ Failure f
-    (Result (value,st')) -> return $ Result $ declare l value st'
+  wrapped ... (\(value,st') -> return $ Result $ declare l value st')
+eval (Compound stmts) = \st -> do
+  let evaluated = map eval stmts
+      glued = composeList evaluated
+  wrapped <- glued (Shadow st Map.empty)
+  wrapped ... (\(Shadow st' _)->return $ Result st')

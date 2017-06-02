@@ -25,12 +25,16 @@ instance Show Expr where
   show (Variable l) = show l
   show (Assignment l v) = "(set " ++ show l ++ " " ++ show v ++ ")"
 
-data Statement = Expression Expr | Print Expr | Declaration LValue Expr
+data Statement = Expression Expr |
+                Print Expr |
+                Declaration LValue Expr |
+                Compound [Statement]
 
 instance Show Statement where
   show (Expression e) = show e ++ ";"
   show (Print e) = "print " ++ show e ++ ";"
   show (Declaration l e) = "var " ++ show l ++ " = " ++ show e ++ ";"
+  show (Compound exprs) = foldl (++) "{" (map show exprs) ++ "}"
 
 primary :: Parser Expr
 primary ((NUMBER n):xs) = return (Literal (Number n),xs)
@@ -98,8 +102,10 @@ expression = assignment
 
 statement :: Parser Statement
 statement (PRINT:xs) = do
-  (expr,SEMICOLON:xs') <- expression xs
-  return (Print expr,xs')
+  case expression xs of
+    (Failure errmsg) -> fail errmsg
+    (Result (expr,SEMICOLON:xs')) -> return (Print expr,xs')
+    (Result (_,x:xs)) -> fail $ "Expected semicolon but got '" ++ show x ++ "'"
 statement (VAR:xs) = do
   result <- lvalue xs
   case result of
@@ -107,9 +113,22 @@ statement (VAR:xs) = do
     (name,EQUAL:xs') -> do
       (expr,SEMICOLON:xs'') <- expression xs'
       return (Declaration name expr,xs'')
+statement (LEFT_BRACE:xs) = do
+  (result,xs') <- aux xs
+  return $ (Compound result,xs')
+  where
+  aux :: Parser [Statement]
+  aux [EOF] = fail "Unterminated compound statement."
+  aux (RIGHT_BRACE:xs) = return ([],xs)
+  aux xs = do
+    (result,xs') <- statement xs
+    (rest,xs'') <- aux xs'
+    return $ (result:rest,xs'')
 statement xs = do
-  (expr,SEMICOLON:xs') <- expression xs
-  return (Expression expr,xs')
+  case expression xs of
+    (Failure errmsg) -> (Failure errmsg)
+    (Result (expr,SEMICOLON:xs')) -> return (Expression expr,xs')
+    (Result (_,x:xs)) -> fail $ "Expected semicolon but got '" ++ show x ++ "'"
 
 parse :: [Token] -> Result [Statement]
 parse [EOF] = return []
@@ -117,3 +136,8 @@ parse xs = do
   (stmt,xs') <- statement xs
   rest <- parse xs'
   return $ stmt:rest
+
+prettyprint :: Result [Statement] -> String
+prettyprint (Failure err) = "Error: " ++ err
+prettyprint (Result (line:xs)) = show line ++ "\n" ++ prettyprint (Result xs)
+prettyprint (Result []) = ""

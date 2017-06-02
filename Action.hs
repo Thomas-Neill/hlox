@@ -1,10 +1,11 @@
 module Action where
 
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
+import Data.List
 import Object
 import Result
 
-type LoxEnvironment = Map.Map String LoxObject
+data LoxEnvironment = Global (Map.Map String LoxObject) | Shadow LoxEnvironment (Map.Map String LoxObject)
 
 type Action = LoxEnvironment -> IO (Result (LoxEnvironment))
 --I __should__ be using monad transformers, but I just can't figure the
@@ -16,7 +17,7 @@ compose a b = \env -> do
   result (return . Failure) b completed
 
 composeList :: [Action] -> Action
-composeList actions = foldl compose (head actions) (tail actions)
+composeList actions = foldl1' compose actions
 
 type ReturnAction = LoxEnvironment -> IO (Result (LoxObject,LoxEnvironment))
 
