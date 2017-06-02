@@ -1,61 +1,35 @@
 module Action where
 
-import Parser (LoxObject)
-
+import qualified Data.Map as Map
+import Object
 import Result
 
-import Control.Applicative
-import Control.Monad.Trans.State
-import Control.Monad.Trans.Class
-import Control.Monad.IO.Class
-import Control.Monad
-import qualified Data.Map.Strict as Map
+type LoxEnvironment = Map.Map String LoxObject
 
-type LoxEnv = Map.Map String LoxObject
+type Action = LoxEnvironment -> IO (Result (LoxEnvironment))
+--I __should__ be using monad transformers, but I just can't figure the
+--darned things out
 
-newtype ResultT m a = ResultT {
-  runResultT :: m (Result a)
-}
+compose :: Action -> Action -> Action
+compose a b = \env -> do
+  completed <- a env
+  result (return . Failure) b completed
 
-instance (Functor f) => Functor (ResultT f) where
-  fmap f = ResultT . fmap (fmap f) . runResultT
+composeList :: [Action] -> Action
+composeList actions = foldl compose (head actions) (tail actions)
 
-instance (Applicative a) => Applicative (ResultT a) where
-  pure = ResultT . pure . Result
-  f <*> a = ResultT $ liftA2 (<*>) (runResultT f) (runResultT a)
+type ReturnAction = LoxEnvironment -> IO (Result (LoxObject,LoxEnvironment))
 
-instance (Monad m) => Monad (ResultT m) where
-  return = pure
-  x >>= f = ResultT $ do
-    v <- runResultT x
-    result (return . Failure) (runResultT . f) v
-  fail = ResultT . return . Failure
+--Wrap a object into a ReturnAction
+wrap :: LoxObject -> ReturnAction
+wrap object = \st -> (return . return) (object,st)
 
-instance MonadTrans ResultT where
-  lift = ResultT . fmap (Result)
+wrapResult :: Result (LoxObject) -> ReturnAction
+wrapResult object = \st -> return $ result (Failure) (\obj->Result (obj,st)) object
 
-liftResult = ResultT . return
-
-instance (MonadIO m) => MonadIO (ResultT m) where
-  liftIO = lift . liftIO
-
-{-} .. test ..
-type Action a = ResultT (StateT (Map.Map String String) IO) a
-
-doStuff :: Action ()
-doStuff = do
-  liftIO $ putStr "Test> "
-  input <- liftIO $ getLine
-  let (op:args) = words input
-  case op of
-    "put" -> (lift . modify) (Map.insert (args !! 0) (args !! 1))
-    "get" -> do
-      state <- lift get
-      value <- liftResult . toResult $ Map.lookup (args !! 0) state
-      liftIO $ putStrLn value
-    _ -> fail "Invalid input :("
-
-main = do
-  (runStateT $ runResultT $ (forever doStuff)) $ Map.fromList []
-  return ()
-{-}
+--this makes staircases of doom less horrible,
+--it's basically a rewritten >>=
+(...) :: Result a -> (a -> IO (Result b)) -> IO (Result b)
+(...) resultValue f = case resultValue of
+                            (Failure err) -> return $ Failure err
+                            (Result value) -> f value

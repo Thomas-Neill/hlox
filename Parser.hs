@@ -1,28 +1,6 @@
 module Parser where
 import Scanner
-
-data LoxObject = String {toString::String} | Number {toDouble::Double} | Boolean {toBool::Bool} | Nil deriving Eq
-
-instance Show LoxObject where
-  show (String s) = "\"" ++ s ++ "\""
-  show (Number n) = shownum n
-  show (Boolean b) = show b
-  show Nil = "nil"
-
-commonStart :: String -> String -> Bool
-commonStart "" x = True
-commonStart x "" = True
-commonStart (x:xs) (y:ys) = if x == y then commonStart xs ys else False
-
-commonEnding :: String -> String -> Bool
-commonEnding x y = commonStart (reverse x) (reverse y)
-
-shownum :: Double -> String
-shownum x =
-  let
-    str = show x
-    isInt = commonEnding str ".0"
-  in if isInt then init $ init str else str
+import Object
 
 data Expr = Literal LoxObject | Unary Token Expr | Grouping Expr | Binary Expr Token Expr
 
@@ -32,10 +10,11 @@ instance Show Expr where
   show (Grouping e) = "(group " ++ show e ++ ")"
   show (Binary r t l) = "(" ++ show t ++ " " ++ show r ++ " " ++ show l ++ ")"
 
-parse :: (Monad m) => [Token] -> m Expr
-parse xs = do
-  (result,[EOF]) <- equality xs
-  return result
+data Statement = Expression Expr | Print Expr
+
+instance Show Statement where
+  show (Expression e) = show e ++ ";"
+  show (Print e) = "print " ++ show e ++ ";"
 
 primary :: (Monad m) => [Token] -> m (Expr,[Token])
 primary ((NUMBER n):xs) = return (Literal (Number n),xs)
@@ -83,3 +62,21 @@ comparison = generateRule term [GREATER,GREATER_EQUAL,LESS,LESS_EQUAL]
 
 equality :: (Monad m) => [Token] -> m (Expr,[Token])
 equality = generateRule comparison [BANG_EQUAL,EQUAL_EQUAL]
+
+expression :: (Monad m) => [Token] -> m (Expr,[Token])
+expression = equality
+
+statement :: (Monad m) => [Token] -> m (Statement,[Token])
+statement (PRINT:xs) = do
+  (expr,SEMICOLON:xs') <- expression xs
+  return (Print expr,xs')
+statement xs = do
+  (expr,SEMICOLON:xs') <- expression xs
+  return (Expression expr,xs')
+
+parse :: (Monad m) => [Token] -> m [Statement]
+parse [EOF] = return []
+parse xs = do
+  (stmt,xs') <- statement xs
+  rest <- parse xs'
+  return $ stmt:rest

@@ -1,5 +1,5 @@
 module Operators where
-import Parser
+import Object
 import Scanner
 
 truthiness :: LoxObject -> LoxObject
