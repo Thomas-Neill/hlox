@@ -16,7 +16,7 @@ data Token =
 
   --Keywords
   AND |  CLASS |  ELSE |  FALSE |  FUN |  FOR |  IF |  NIL |  OR |
-  PRINT |  RETURN |  SUPER |  THIS |  TRUE |  VAR |  WHILE | EOF
+  PRINT |  RETURN |  SUPER |  THIS |  TRUE |  VAR |  WHILE | EOF | THEN
   deriving Eq
 
 instance Show Token where
@@ -121,6 +121,7 @@ getKeyword (IDENTIFIER "this") = THIS
 getKeyword (IDENTIFIER "true") = TRUE
 getKeyword (IDENTIFIER "var") = VAR
 getKeyword (IDENTIFIER "while") = WHILE
+getKeyword (IDENTIFIER "then") = THEN
 getKeyword x = x
 
 append :: (Monad m) => Token -> ([Token] -> m [Token])

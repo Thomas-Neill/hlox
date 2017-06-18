@@ -10,7 +10,8 @@ data Expr = Literal LoxObject |
             Grouping Expr |
             Binary Expr Token Expr |
             Variable LValue |
-            Assignment LValue Expr
+            Assignment LValue Expr |
+            InlineIf Expr Expr Expr
 
 data LValue = Name String
 
@@ -97,8 +98,22 @@ assignment xs = case lvalue xs of
     return $ (Assignment name value,xs'')
   (Result _) -> equality xs
 
+inlineif :: Parser Expr
+inlineif (IF:xs) = do
+  result <- assignment xs
+  case result of
+    (cond,THEN:xs') -> do
+      result' <- assignment xs'
+      case result' of
+        (thn,ELSE:xs'') -> do
+          (els,xs''') <- assignment xs''
+          return (InlineIf cond thn els,xs''')
+        _ -> fail "expected else in inline if"
+    _ -> fail "expected then in inline if"
+inlineif xs = assignment xs
+
 expression :: Parser Expr
-expression = assignment
+expression = inlineif
 
 statement :: Parser Statement
 statement (PRINT:xs) = do

@@ -38,6 +38,8 @@ declare n value (Shadow parent env) =
 
 --BEHOLD, THE STAIRCASE OF DOOM
 --TODO: fix this somehow... it works, and "..." really helps, but this is still causing me pain
+unwrap = flip (...)
+
 evalExpr :: Expr ->  ReturnAction
 evalExpr (Literal l) = wrap l
 evalExpr (Grouping g) = evalExpr g
@@ -62,6 +64,11 @@ evalExpr (Assignment l obj) = \st -> evalExpr obj st >>= (\wrapped ->
     set l obj' st ... (\st' ->
       return $ Result (obj',st')
     )))
+
+evalExpr (InlineIf cond thn els) = \st ->
+  evalExpr cond st >>= (unwrap (\(cond',st') ->
+        if toBool $ truthiness cond' then evalExpr thn st' else evalExpr els st'
+        ))
 
 eval :: Statement -> Action
 eval (Expression e) = \st -> evalExpr e st >>= (\wrapped' -> wrapped' ... (\(value,st')->return . Result $ st'))
