@@ -25,17 +25,24 @@ instance Show Expr where
   show (Binary r t l) = "(" ++ show t ++ " " ++ show r ++ " " ++ show l ++ ")"
   show (Variable l) = show l
   show (Assignment l v) = "(set " ++ show l ++ " " ++ show v ++ ")"
+  show (InlineIf c i e) = "(if " ++ show c ++ " " ++ show i ++ " " ++ show e ++ ")"
 
-data Statement = Expression Expr |
+data Statement = Empty |
+                Expression Expr |
                 Print Expr |
                 Declaration LValue Expr |
-                Compound [Statement]
+                Compound [Statement] |
+                If Expr Statement Statement |
+                While Expr Statement
 
 instance Show Statement where
   show (Expression e) = show e ++ ";"
   show (Print e) = "print " ++ show e ++ ";"
   show (Declaration l e) = "var " ++ show l ++ " = " ++ show e ++ ";"
   show (Compound exprs) = foldl (++) "{" (map show exprs) ++ "}"
+  show Empty = ";"
+  show (If expr i e) = "if(" ++ show expr ++ ") " ++ show i ++ " else " ++ show e
+  show (While expr st) = "while " ++ show expr ++ " " ++ show st
 
 primary :: Parser Expr
 primary ((NUMBER n):xs) = return (Literal (Number n),xs)
@@ -138,7 +145,26 @@ statement (LEFT_BRACE:xs) = do
   aux xs = do
     (result,xs') <- statement xs
     (rest,xs'') <- aux xs'
-    return $ (result:rest,xs'')
+    return (result:rest,xs'')
+statement (SEMICOLON:xs) = return (Empty,xs)
+statement (IF:LEFT_PAREN:xs) = do
+  (cond,RIGHT_PAREN:xs') <- expression xs
+  (if',xs'') <- statement xs'
+  case xs'' of
+    (ELSE:xs'') -> do
+      (else',xs''') <- statement xs''
+      return (If cond if' else',xs''')
+    (_) -> return (If cond if' Empty,xs'')
+statement (WHILE:xs) = do
+  (cond,xs') <- expression xs
+  (stm,xs'') <- statement xs'
+  return $ (While cond stm,xs'')
+statement (FOR:LEFT_PAREN:xs) = do
+  (initalizer,xs') <- statement xs
+  (check,SEMICOLON:xs'') <- expression xs'
+  (eachloop,RIGHT_PAREN:xs''') <- statement xs''
+  (body,xs'''') <- statement xs'''
+  return $ (Compound [initalizer,While check (Compound [body,eachloop])],xs'''')
 statement xs = do
   case expression xs of
     (Failure errmsg) -> (Failure errmsg)

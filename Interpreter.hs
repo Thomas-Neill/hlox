@@ -86,3 +86,10 @@ eval (Compound stmts) = \st -> do
       glued = composeList evaluated
   wrapped <- glued (Shadow st Map.empty)
   wrapped ... (\(Shadow st' _)->return $ Result st')
+eval (Empty) = \st -> return $ Result st
+eval (If cond if' else') = \st -> do
+  wrapped <- evalExpr cond st
+  wrapped ... (\(cond',st') -> eval (if toBool $ truthiness cond' then if' else else') st)
+eval (While cond body) = \st -> do
+  wrapped <- evalExpr cond st
+  wrapped ... (\(cond',st') -> if toBool $ truthiness cond' then compose (eval body) (eval (While cond body)) st else return $ Result st')
