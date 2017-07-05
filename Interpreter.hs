@@ -5,6 +5,9 @@ import Operators
 import Action
 import Object
 import qualified Data.Map.Strict as Map
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.State
+import Control.Monad.IO.Class
 
 find :: LValue -> LoxEnvironment -> Either String LoxObject
 find (Name n) (Global env) = case Map.lookup n env of
@@ -39,56 +42,64 @@ declare n value (Shadow parent env) =
 --TODO: fix this somehow... it works, and "..." really helps, but this is still causing me pain
 unwrap = flip (...)
 
-evalExpr :: Expr ->  ReturnAction
-evalExpr (Literal l) = wrap l
+evalExpr :: Expr ->  Action LoxObject
+evalExpr (Literal l) = return l
 evalExpr (Grouping g) = evalExpr g
-evalExpr (Binary x op y) = \st ->
-  lookupBin op ... (\func -> evalExpr x st >>=
-                        (\wrappedx -> wrappedx ... (\(x',st')->
-                            evalExpr y st' >>= (\wrappedy -> wrappedy ...
-                              (\(y',st'')-> func x' y' ...
-                                (\value -> return $ Right (value,st'')
-                    ))))))
+evalExpr (Binary x op y) =
+  do
+    op' <- wrapEither $ lookupBin op
+    x' <- evalExpr x
+    y' <- evalExpr y
+    wrapEither $ op' x' y'
 
-evalExpr (Unary op x) = \st ->
-  lookupUn op ... (\func -> evalExpr x st >>=
-      (\wrappedx ->
-          wrappedx ... (\(x',st')-> return $
-            either (Left) (\value-> Right (value,st')) (func x'))))
+evalExpr (Unary op x) =
+  do
+    op' <- wrapEither $ lookupUn op
+    x' <- evalExpr x
+    wrapEither $ op' x'
 
-evalExpr (Variable v) = \st -> find v st ... (\obj-> return . Right $ (obj,st))
+evalExpr (Variable v) =
+  do
+    st <- lift get
+    wrapEither $ find v st
 
-evalExpr (Assignment l obj) = \st -> evalExpr obj st >>= (\wrapped ->
-  wrapped ... (\(obj',st') ->
-    set l obj' st ... (\st' ->
-      return $ Right (obj',st')
-    )))
+evalExpr (Assignment l obj) =
+  do
+    obj' <- evalExpr obj
+    st <- lift get
+    st' <- (wrapEither $ set l obj' st)
+    lift $ put st'
+    return obj'
 
-evalExpr (InlineIf cond thn els) = \st ->
-  evalExpr cond st >>= (unwrap (\(cond',st') ->
-        if toBool $ truthiness cond' then evalExpr thn st' else evalExpr els st'
-        ))
+evalExpr (InlineIf cond thn els) = do
+  cond' <- evalExpr cond
+  evalExpr $ if toBool $ truthiness cond' then thn else els
 
-eval :: Statement -> Action
-eval (Expression e) = \st -> evalExpr e st >>= (\wrapped' -> wrapped' ... (\(value,st')->return . Right $ st'))
-eval (Print expr) = \st -> do
-  wrapped <- evalExpr expr st
-  case wrapped of
-    (Left f) -> return ()
-    (Right (value,_)) -> print value
-  wrapped ... (\(_,st')-> return $ Right st')
-eval (Declaration l expr) = \st -> do
-  wrapped <- evalExpr expr st
-  wrapped ... (\(value,st') -> return $ Right $ declare l value st')
-eval (Compound stmts) = \st -> do
-  let evaluated = map eval stmts
-      glued = composeList evaluated
-  wrapped <- glued (Shadow st Map.empty)
-  wrapped ... (\(Shadow st' _)->return $ Right st')
-eval (Empty) = \st -> return $ Right st
-eval (If cond if' else') = \st -> do
-  wrapped <- evalExpr cond st
-  wrapped ... (\(cond',st') -> eval (if toBool $ truthiness cond' then if' else else') st)
-eval (While cond body) = \st -> do
-  wrapped <- evalExpr cond st
-  wrapped ... (\(cond',st') -> if toBool $ truthiness cond' then compose (eval body) (eval (While cond body)) st else return $ Right st')
+
+eval :: Statement -> Action ()
+
+eval (Expression e) = do
+  evalExpr e
+  return ()
+
+eval (Print e) = do
+  result <- evalExpr e
+  liftIO $ print result
+
+eval (Declaration l e) = do
+  val <- evalExpr e
+  st <- lift get
+  lift $ put (declare l val st)
+
+eval (Compound stmts) = do
+  mapM_ eval stmts
+
+eval (Empty) = return ()
+
+eval (If cond if' else') = do
+  cond' <- evalExpr cond
+  eval (if toBool $ truthiness cond' then if' else else')
+
+eval (While cond body) = do
+  cond' <- evalExpr cond
+  if toBool $ truthiness cond' then eval body >> eval (While cond body) else return ()
