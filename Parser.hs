@@ -1,9 +1,8 @@
 module Parser where
 import Scanner
 import Object
-import Result
 
-type Parser a = [Token] -> Result (a,[Token])
+type Parser a = [Token] -> Either String (a,[Token])
 
 data Expr = Literal LoxObject |
             Unary Token Expr |
@@ -59,7 +58,7 @@ primary xs = do
 
 lvalue :: Parser LValue
 lvalue (IDENTIFIER name:xs) = return (Name name,xs)
-lvalue xs = fail ("Expected literal or identifier: " ++ (show (head xs)))
+lvalue xs = Left ("Expected literal or identifier: " ++ (show (head xs)))
 
 unary :: Parser Expr
 unary (BANG:xs) = do
@@ -99,11 +98,11 @@ equality = generateRule comparison [BANG_EQUAL,EQUAL_EQUAL]
 
 assignment :: Parser Expr
 assignment xs = case lvalue xs of
-  (Failure _) -> equality xs --we couldn't parse an lvalue
-  (Result (name,EQUAL:xs')) -> do
+  (Left _) -> equality xs --we couldn't parse an lvalue
+  (Right (name,EQUAL:xs')) -> do
     (value,xs'') <- assignment xs'
     return $ (Assignment name value,xs'')
-  (Result _) -> equality xs
+  (Right _) -> equality xs
 
 inlineif :: Parser Expr
 inlineif (IF:xs) = do
@@ -115,8 +114,8 @@ inlineif (IF:xs) = do
         (thn,ELSE:xs'') -> do
           (els,xs''') <- assignment xs''
           return (InlineIf cond thn els,xs''')
-        _ -> fail "expected else in inline if"
-    _ -> fail "expected then in inline if"
+        _ -> Left "expected else in inline if"
+    _ -> Left "expected then in inline if"
 inlineif xs = assignment xs
 
 expression :: Parser Expr
@@ -125,9 +124,9 @@ expression = inlineif
 statement :: Parser Statement
 statement (PRINT:xs) = do
   case expression xs of
-    (Failure errmsg) -> fail errmsg
-    (Result (expr,SEMICOLON:xs')) -> return (Print expr,xs')
-    (Result (_,x:xs)) -> fail $ "Expected semicolon but got '" ++ show x ++ "'"
+    (Left errmsg) -> Left errmsg
+    (Right (expr,SEMICOLON:xs')) -> return (Print expr,xs')
+    (Right (_,x:xs)) -> Left $ "Expected semicolon but got '" ++ show x ++ "'"
 statement (VAR:xs) = do
   result <- lvalue xs
   case result of
@@ -140,7 +139,7 @@ statement (LEFT_BRACE:xs) = do
   return $ (Compound result,xs')
   where
   aux :: Parser [Statement]
-  aux [EOF] = fail "Unterminated compound statement."
+  aux [EOF] = Left "Unterminated compound statement."
   aux (RIGHT_BRACE:xs) = return ([],xs)
   aux xs = do
     (result,xs') <- statement xs
@@ -167,18 +166,18 @@ statement (FOR:LEFT_PAREN:xs) = do
   return $ (Compound [initalizer,While check (Compound [body,eachloop])],xs'''')
 statement xs = do
   case expression xs of
-    (Failure errmsg) -> (Failure errmsg)
-    (Result (expr,SEMICOLON:xs')) -> return (Expression expr,xs')
-    (Result (_,x:xs)) -> fail $ "Expected semicolon but got '" ++ show x ++ "'"
+    (Left errmsg) -> Left errmsg
+    (Right (expr,SEMICOLON:xs')) -> return (Expression expr,xs')
+    (Right (_,x:xs)) -> Left $ "Expected semicolon but got '" ++ show x ++ "'"
 
-parse :: [Token] -> Result [Statement]
+parse :: [Token] -> Either String [Statement]
 parse [EOF] = return []
 parse xs = do
   (stmt,xs') <- statement xs
   rest <- parse xs'
   return $ stmt:rest
 
-prettyprint :: Result [Statement] -> String
-prettyprint (Failure err) = "Error: " ++ err
-prettyprint (Result (line:xs)) = show line ++ "\n" ++ prettyprint (Result xs)
-prettyprint (Result []) = ""
+prettyprint :: Either String [Statement] -> String
+prettyprint (Left err) = "Error: " ++ err
+prettyprint (Right (line:xs)) = show line ++ "\n" ++ prettyprint (Right xs)
+prettyprint (Right []) = ""

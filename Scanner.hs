@@ -1,5 +1,6 @@
 module Scanner where
 import Data.Char
+
 data Token =
   --One character tokens
   LEFT_PAREN |  RIGHT_PAREN |  LEFT_BRACE |  RIGHT_BRACE |
@@ -124,10 +125,10 @@ getKeyword (IDENTIFIER "while") = WHILE
 getKeyword (IDENTIFIER "then") = THEN
 getKeyword x = x
 
-append :: (Monad m) => Token -> ([Token] -> m [Token])
+append :: Token -> ([Token] -> Either String [Token])
 append x = (\xs -> return (x:xs))
 
-tokenize :: (Monad m) => String -> m [Token]
+tokenize :: String -> Either String [Token]
 
 tokenize "" = return [EOF]
 tokenize (' ':xs)     = tokenize xs
@@ -167,6 +168,6 @@ tokenize xs
     let
       r = munchVar xs
     in tokenize (snd r) >>= append (getKeyword (IDENTIFIER (fst r)))
-  | otherwise = fail ("Invalid char: "++[h])
+  | otherwise = Left ("Invalid char: "++[h])
   where
     h = head xs

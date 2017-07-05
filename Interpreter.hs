@@ -3,29 +3,28 @@ module Interpreter where
 import Parser
 import Operators
 import Action
-import Result
 import Object
 import qualified Data.Map.Strict as Map
 
-find :: LValue -> LoxEnvironment -> Result LoxObject
+find :: LValue -> LoxEnvironment -> Either String LoxObject
 find (Name n) (Global env) = case Map.lookup n env of
-        Nothing -> Failure $ "Variable '" ++ n ++ "' does not exist!"
-        (Just obj) -> Result obj
+        Nothing -> Left $ "Variable '" ++ n ++ "' does not exist!"
+        (Just obj) -> Right obj
 
 find n (Shadow parent env) = case find n (Global env) of
-        (Failure _) -> find n parent
-        (Result obj) -> Result obj
+        (Left _) -> find n parent
+        (Right obj) -> Right obj
 
-set :: LValue -> LoxObject -> LoxEnvironment -> Result LoxEnvironment
+set :: LValue -> LoxObject -> LoxEnvironment -> Either String LoxEnvironment
 set (Name n) replacement (Global env) = if Map.notMember n env
-  then Failure $ "Variable '" ++ n ++ "' does not exist!"
-  else Result $ Global $ Map.insert n replacement env
+  then Left $ "Variable '" ++ n ++ "' does not exist!"
+  else Right $ Global $ Map.insert n replacement env
 
 set n replacement (Shadow parent env) = case set n replacement (Global env) of
-        (Failure _) -> case set n replacement parent of
-                        (Failure err) -> Failure err
-                        (Result parent') -> Result (Shadow parent' env)
-        (Result asglobal) -> (\(Global env')-> Result (Shadow parent env')) asglobal
+        (Left _) -> case set n replacement parent of
+                        (Left err) -> Left err
+                        (Right parent') -> Right (Shadow parent' env)
+        (Right asglobal) -> (\(Global env')-> Right (Shadow parent env')) asglobal
 
 declare :: LValue -> LoxObject -> LoxEnvironment -> LoxEnvironment
 declare (Name n) value (Global env) = Global $ Map.insert n value env
@@ -48,21 +47,21 @@ evalExpr (Binary x op y) = \st ->
                         (\wrappedx -> wrappedx ... (\(x',st')->
                             evalExpr y st' >>= (\wrappedy -> wrappedy ...
                               (\(y',st'')-> func x' y' ...
-                                (\value -> return $ Result (value,st'')
+                                (\value -> return $ Right (value,st'')
                     ))))))
 
 evalExpr (Unary op x) = \st ->
   lookupUn op ... (\func -> evalExpr x st >>=
       (\wrappedx ->
           wrappedx ... (\(x',st')-> return $
-            result (Failure) (\value-> Result (value,st')) (func x'))))
+            either (Left) (\value-> Right (value,st')) (func x'))))
 
-evalExpr (Variable v) = \st -> find v st ... (\obj-> return . Result $ (obj,st))
+evalExpr (Variable v) = \st -> find v st ... (\obj-> return . Right $ (obj,st))
 
 evalExpr (Assignment l obj) = \st -> evalExpr obj st >>= (\wrapped ->
   wrapped ... (\(obj',st') ->
     set l obj' st ... (\st' ->
-      return $ Result (obj',st')
+      return $ Right (obj',st')
     )))
 
 evalExpr (InlineIf cond thn els) = \st ->
@@ -71,25 +70,25 @@ evalExpr (InlineIf cond thn els) = \st ->
         ))
 
 eval :: Statement -> Action
-eval (Expression e) = \st -> evalExpr e st >>= (\wrapped' -> wrapped' ... (\(value,st')->return . Result $ st'))
+eval (Expression e) = \st -> evalExpr e st >>= (\wrapped' -> wrapped' ... (\(value,st')->return . Right $ st'))
 eval (Print expr) = \st -> do
   wrapped <- evalExpr expr st
   case wrapped of
-    (Failure f) -> return ()
-    (Result (value,_)) -> print value
-  wrapped ... (\(_,st')-> return $ Result st')
+    (Left f) -> return ()
+    (Right (value,_)) -> print value
+  wrapped ... (\(_,st')-> return $ Right st')
 eval (Declaration l expr) = \st -> do
   wrapped <- evalExpr expr st
-  wrapped ... (\(value,st') -> return $ Result $ declare l value st')
+  wrapped ... (\(value,st') -> return $ Right $ declare l value st')
 eval (Compound stmts) = \st -> do
   let evaluated = map eval stmts
       glued = composeList evaluated
   wrapped <- glued (Shadow st Map.empty)
-  wrapped ... (\(Shadow st' _)->return $ Result st')
-eval (Empty) = \st -> return $ Result st
+  wrapped ... (\(Shadow st' _)->return $ Right st')
+eval (Empty) = \st -> return $ Right st
 eval (If cond if' else') = \st -> do
   wrapped <- evalExpr cond st
   wrapped ... (\(cond',st') -> eval (if toBool $ truthiness cond' then if' else else') st)
 eval (While cond body) = \st -> do
   wrapped <- evalExpr cond st
-  wrapped ... (\(cond',st') -> if toBool $ truthiness cond' then compose (eval body) (eval (While cond body)) st else return $ Result st')
+  wrapped ... (\(cond',st') -> if toBool $ truthiness cond' then compose (eval body) (eval (While cond body)) st else return $ Right st')

@@ -2,15 +2,14 @@ import Interpreter
 import Parser
 import Action
 import Scanner
-import Result
 import qualified Data.Map as Map
 
-evalText :: String -> LoxEnvironment -> (IO (Result LoxEnvironment,Bool))
+evalText :: String -> LoxEnvironment -> (IO (Either String LoxEnvironment,Bool))
 evalText input env = let
-  actions = (return input >>= tokenize >>= parse) :: Result [Statement]
+  actions = return input >>= tokenize >>= parse
   in case actions of
-    (Failure errmsg) -> return (Failure errmsg,False)
-    (Result statements) -> fmap (\res->(res,True)) $ composeList (map eval statements) env
+    (Left errmsg) -> return (Left errmsg,False)
+    (Right statements) -> fmap (\res->(res,True)) $ composeList (map eval statements) env
 
 loop st = do
   putStr "lox.hs> "
@@ -19,13 +18,13 @@ loop st = do
   then do
       newst <- evalText input st
       case newst of
-        (Failure errmsg,True) -> do
+        (Left errmsg,True) -> do
           putStrLn $ "Runtime error: " ++ errmsg
           loop st
-        (Failure errmsg,False) -> do
+        (Left errmsg,False) -> do
           putStrLn $ "Syntax/parser error: " ++ errmsg
           loop st
-        (Result st',True) -> loop st'
+        (Right st',True) -> loop st'
   else return ()
 
 main = loop (Global Map.empty)
