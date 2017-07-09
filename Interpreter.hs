@@ -38,10 +38,6 @@ declare n value (Shadow parent env) =
   in case env' of
     (Global env'') -> Shadow parent env''
 
---BEHOLD, THE STAIRCASE OF DOOM
---TODO: fix this somehow... it works, and "..." really helps, but this is still causing me pain
-unwrap = flip (...)
-
 evalExpr :: Expr ->  Action LoxObject
 evalExpr (Literal l) = return l
 evalExpr (Grouping g) = evalExpr g
@@ -76,25 +72,42 @@ evalExpr (InlineIf cond thn els) = do
   evalExpr $ if toBool $ truthiness cond' then thn else els
 
 
-eval :: Statement -> Action ()
+data Interrupt = None | Stop deriving Eq
+
+instance Monoid Interrupt where
+  mappend None x = x
+  mappend x None = x
+  mappend x _ = x
+  mempty = None
+
+significant :: Interrupt -> Bool
+significant = (None /=)
+
+eval :: Statement -> Action Interrupt
 
 eval (Expression e) = do
   evalExpr e
-  return ()
+  return None
 
 eval (Print e) = do
   result <- evalExpr e
   liftIO $ print result
+  return None
 
 eval (Declaration l e) = do
   val <- evalExpr e
   st <- lift get
   lift $ put (declare l val st)
+  return None
 
 eval (Compound stmts) = do
-  mapM_ eval stmts
+  ints <- takeUntilM significant $ map eval stmts
+  return $ last ints
 
-eval (Empty) = return ()
+
+eval Empty = return None
+
+eval Break = return Stop
 
 eval (If cond if' else') = do
   cond' <- evalExpr cond
@@ -102,4 +115,10 @@ eval (If cond if' else') = do
 
 eval (While cond body) = do
   cond' <- evalExpr cond
-  if toBool $ truthiness cond' then eval body >> eval (While cond body) else return ()
+  if toBool $ truthiness cond' then do
+    int <- eval body
+    if significant int then
+      return None
+    else
+      eval (While cond body)
+  else return None

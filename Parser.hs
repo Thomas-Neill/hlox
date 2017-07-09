@@ -32,7 +32,8 @@ data Statement = Empty |
                 Declaration LValue Expr |
                 Compound [Statement] |
                 If Expr Statement Statement |
-                While Expr Statement
+                While Expr Statement |
+                Break
 
 instance Show Statement where
   show (Expression e) = show e ++ ";"
@@ -42,6 +43,7 @@ instance Show Statement where
   show Empty = ";"
   show (If expr i e) = "if(" ++ show expr ++ ") " ++ show i ++ " else " ++ show e
   show (While expr st) = "while " ++ show expr ++ " " ++ show st
+  show Break = "break;"
 
 primary :: Parser Expr
 primary ((NUMBER n):xs) = return (Literal (Number n),xs)
@@ -164,6 +166,7 @@ statement (FOR:LEFT_PAREN:xs) = do
   (eachloop,RIGHT_PAREN:xs''') <- statement xs''
   (body,xs'''') <- statement xs'''
   return $ (Compound [initalizer,While check (Compound [body,eachloop])],xs'''')
+statement (BREAK:SEMICOLON:xs) = return (Break,xs)
 statement xs = do
   case expression xs of
     (Left errmsg) -> Left errmsg

@@ -17,7 +17,7 @@ data Token =
 
   --Keywords
   AND |  CLASS |  ELSE |  FALSE |  FUN |  FOR |  IF |  NIL |  OR |
-  PRINT |  RETURN |  SUPER |  THIS |  TRUE |  VAR |  WHILE | EOF | THEN
+  PRINT |  RETURN |  SUPER |  THIS |  TRUE |  VAR |  WHILE | EOF | THEN | BREAK
   deriving Eq
 
 instance Show Token where
@@ -123,6 +123,7 @@ getKeyword (IDENTIFIER "true") = TRUE
 getKeyword (IDENTIFIER "var") = VAR
 getKeyword (IDENTIFIER "while") = WHILE
 getKeyword (IDENTIFIER "then") = THEN
+getKeyword (IDENTIFIER "break") = BREAK
 getKeyword x = x
 
 append :: Token -> ([Token] -> Either String [Token])

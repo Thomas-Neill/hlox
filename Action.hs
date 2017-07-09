@@ -14,19 +14,12 @@ type Action a = ExceptT String (StateT LoxEnvironment IO) a
 wrapEither :: Either String a -> Action a
 wrapEither  = either throwE return
 
-compose :: Action a -> Action a -> Action a
-compose  = (>>)
-
-composeList :: [Action a] -> Action a
-composeList actions = foldl1' compose actions
-
---type ReturnAction = LoxEnvironment -> IO (Either String (LoxObject,LoxEnvironment))
-
---Wrap a object into a ReturnAction
-
---this makes staircases of doom less horrible,
---it's basically a rewritten >>= that lifts into IO
-(...) :: Either String a -> (a -> IO (Either String b)) -> IO (Either String b)
-(...) resultValue f = case resultValue of
-                            (Left err) -> return $ Left err
-                            (Right value) -> f value
+takeUntilM :: (Monad m) => (a -> Bool) -> [m a] -> m [a]
+takeUntilM predicate [] = return []
+takeUntilM predicate (x:xs) = do
+  x' <- x
+  if predicate x' then
+    return [x']
+  else do
+    xs' <- takeUntilM predicate xs
+    return $ x':xs'
