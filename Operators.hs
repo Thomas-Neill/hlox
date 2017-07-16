@@ -1,6 +1,6 @@
 module Operators where
 import Object
-import Scanner
+import Statement
 
 truthiness :: LoxObject -> LoxObject
 truthiness Nil = Boolean False
@@ -53,17 +53,17 @@ lteq :: LoxObject -> LoxObject -> Either String LoxObject
 lteq (Number n) (Number n') = return $ Boolean $ n <= n'
 lteq a b = Left $ failmsg "<=" a b
 
-lookupBin :: Token -> Either String (LoxObject -> LoxObject -> Either String LoxObject)
-lookupBin PLUS = return add
-lookupBin MINUS = return sub
-lookupBin STAR = return mul
-lookupBin SLASH = return divide
-lookupBin EQUAL_EQUAL = return eq
-lookupBin BANG_EQUAL = return neq
-lookupBin GREATER = return gr
-lookupBin LESS = return lt
-lookupBin GREATER_EQUAL = return greq
-lookupBin LESS_EQUAL = return lteq
+lookupBin :: BinOP -> Either String (LoxObject -> LoxObject -> Either String LoxObject)
+lookupBin Plus = return add
+lookupBin Minus = return sub
+lookupBin Mul = return mul
+lookupBin Div = return divide
+lookupBin Equal = return eq
+lookupBin Inequal = return neq
+lookupBin Greater = return gr
+lookupBin Less = return lt
+lookupBin GrEqual = return greq
+lookupBin LEqual = return lteq
 lookupBin _ = Left "not implemented"
 
 loxNot :: LoxObject -> Either String LoxObject
@@ -73,7 +73,7 @@ neg :: LoxObject -> Either String LoxObject
 neg (Number n) = return $ Number $ negate n
 neg _ = Left "Operation '-' (unary) is only supported for numbers"
 
-lookupUn :: Token -> Either String (LoxObject -> Either String LoxObject)
-lookupUn BANG = return loxNot
-lookupUn MINUS = return neg
+lookupUn :: UnOP -> Either String (LoxObject -> Either String LoxObject)
+lookupUn Not = return loxNot
+lookupUn Negate = return neg
 lookupUn _ = Left "not implemented"

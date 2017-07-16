@@ -1,49 +1,9 @@
 module Parser where
+import Statement
 import Scanner
 import Object
 
 type Parser a = [Token] -> Either String (a,[Token])
-
-data Expr = Literal LoxObject |
-            Unary Token Expr |
-            Grouping Expr |
-            Binary Expr Token Expr |
-            Variable LValue |
-            Assignment LValue Expr |
-            InlineIf Expr Expr Expr
-
-data LValue = Name String
-
-instance Show LValue where
-  show (Name s) = '#':s
-
-instance Show Expr where
-  show (Literal l) = show l
-  show (Unary t e) = "(" ++ show t ++ " " ++ show e ++ ")"
-  show (Grouping e) = "(group " ++ show e ++ ")"
-  show (Binary r t l) = "(" ++ show t ++ " " ++ show r ++ " " ++ show l ++ ")"
-  show (Variable l) = show l
-  show (Assignment l v) = "(set " ++ show l ++ " " ++ show v ++ ")"
-  show (InlineIf c i e) = "(if " ++ show c ++ " " ++ show i ++ " " ++ show e ++ ")"
-
-data Statement = Empty |
-                Expression Expr |
-                Print Expr |
-                Declaration LValue Expr |
-                Compound [Statement] |
-                If Expr Statement Statement |
-                While Expr Statement |
-                Break
-
-instance Show Statement where
-  show (Expression e) = show e ++ ";"
-  show (Print e) = "print " ++ show e ++ ";"
-  show (Declaration l e) = "var " ++ show l ++ " = " ++ show e ++ ";"
-  show (Compound exprs) = foldl (++) "{" (map show exprs) ++ "}"
-  show Empty = ";"
-  show (If expr i e) = "if(" ++ show expr ++ ") " ++ show i ++ " else " ++ show e
-  show (While expr st) = "while " ++ show expr ++ " " ++ show st
-  show Break = "break;"
 
 primary :: Parser Expr
 primary ((NUMBER n):xs) = return (Literal (Number n),xs)
@@ -65,17 +25,17 @@ lvalue xs = Left ("Expected literal or identifier: " ++ (show (head xs)))
 unary :: Parser Expr
 unary (BANG:xs) = do
   (result,remainder) <- unary xs
-  return (Unary BANG result,remainder)
+  return (Unary Not result,remainder)
 unary (MINUS:xs) = do
   (result,remainder) <- unary xs
-  return (Unary MINUS result,remainder)
+  return (Unary Negate result,remainder)
 unary xs = primary xs
 
 generateRule :: Parser Expr -> [Token] -> Parser Expr
 generateRule precedent munches tokens = do
   (result,remainder) <- precedent tokens
   (chunks,remainder') <- chunk precedent munches remainder
-  return (foldr (\x acc -> Binary acc (fst x) (snd x)) result chunks,remainder')
+  return (foldr (\x acc -> Binary acc (toBin $ fst x) (snd x)) result chunks,remainder')
   where
     chunk :: (Monad m) =>  ([Token] -> m (Expr,[Token])) -> [Token] -> [Token] -> m ([(Token,Expr)],[Token])
     chunk precedent munches tokens =

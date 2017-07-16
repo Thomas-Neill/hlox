@@ -8,7 +8,6 @@ import Control.Monad.Trans.Except
 
 data LoxEnvironment = Global (Map.Map String LoxObject) | Shadow LoxEnvironment (Map.Map String LoxObject)
 
---type Action = LoxEnvironment -> IO (Either String (LoxEnvironment))
 type Action a = ExceptT String (StateT LoxEnvironment IO) a
 
 wrapEither :: Either String a -> Action a

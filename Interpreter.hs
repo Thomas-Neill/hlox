@@ -4,6 +4,7 @@ import Parser
 import Operators
 import Action
 import Object
+import Statement
 import qualified Data.Map.Strict as Map
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.State
