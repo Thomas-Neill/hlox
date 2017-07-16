@@ -11,7 +11,7 @@ import Control.Monad
 
 evalText :: String -> Action ()
 evalText input = do
-  stmts <- (wrapEither $ tokenize input >>= parse)
+  stmts <- wrapEither $ either (Left . show) (Right) $ parsed "stdin" input
   ints <- mapM eval stmts
   unless (all (not . significant) ints) (throwE "Unexpected top-level interrupt")
   return ()

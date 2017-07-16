@@ -1,146 +1,76 @@
 module Parser where
 import Statement
-import Scanner
 import Object
+import Text.Parsec hiding (Empty)
+import Text.ParserCombinators.Parsec hiding (try)
 
-type Parser a = [Token] -> Either String (a,[Token])
+num :: Parser Double
+num = read <$> many1 (digit <|> char '.')
 
-primary :: Parser Expr
-primary ((NUMBER n):xs) = return (Literal (Number n),xs)
-primary ((STRING x):xs) = return (Literal (String x),xs)
-primary (FALSE:xs)      = return (Literal (Boolean False),xs)
-primary (TRUE:xs)       = return (Literal (Boolean True),xs)
-primary (NIL:xs)        = return (Literal Nil,xs)
-primary (LEFT_PAREN:xs) = do
-  (result,RIGHT_PAREN:remainder) <- equality xs
-  return (Grouping result,remainder)
-primary xs = do
-  (result,remainder) <- lvalue xs
-  return (Variable result,remainder)
+str :: Parser [Char]
+str = char '"' *> (many $ noneOf ['"']) <* char '"'
 
-lvalue :: Parser LValue
-lvalue (IDENTIFIER name:xs) = return (Name name,xs)
-lvalue xs = Left ("Expected literal or identifier: " ++ (show (head xs)))
+spaces1 = many1 space
 
-unary :: Parser Expr
-unary (BANG:xs) = do
-  (result,remainder) <- unary xs
-  return (Unary Not result,remainder)
-unary (MINUS:xs) = do
-  (result,remainder) <- unary xs
-  return (Unary Negate result,remainder)
-unary xs = primary xs
+pad :: Parser a -> Parser a
+pad parser = spaces *> parser <* spaces
 
-generateRule :: Parser Expr -> [Token] -> Parser Expr
-generateRule precedent munches tokens = do
-  (result,remainder) <- precedent tokens
-  (chunks,remainder') <- chunk precedent munches remainder
-  return (foldr (\x acc -> Binary acc (toBin $ fst x) (snd x)) result chunks,remainder')
+genNext :: [(String,BinOP)] -> Parser Expr -> Parser Expr
+genNext mp pred = pred `chainl1` getOp <?> "expression"
   where
-    chunk :: (Monad m) =>  ([Token] -> m (Expr,[Token])) -> [Token] -> [Token] -> m ([(Token,Expr)],[Token])
-    chunk precedent munches tokens =
-      if (head tokens) `elem` munches then do
-        (result,remainder) <- precedent (tail tokens)
-        (result',remainder') <- chunk precedent munches remainder
-        return ((head tokens,result):result',remainder')
-      else
-        return ([],tokens)
+    b' op x y = Binary x op y
+    getOp = (try . pad $ (b' . lookup') <$> (choice (map (try . string . fst) mp)))
+    lookup' x = case lookup x mp of
+                      Nothing -> error "Impossible"
+                      Just r -> r
 
-factor :: Parser Expr
-factor = generateRule unary [SLASH,STAR]
+primary = choice [
+    Literal . Number <$> num,
+    Literal . String <$> str,
+    try $ Literal . Boolean . (== "true") <$> (string "false" <|> string "true"),
+    try $ Literal . const Nil <$> string "nil",
+    fmap Variable lvalue,
+    Grouping <$> (char '(' *> expr <* char ')')] <?> "literal, variable or parenthesized expression"
 
-term :: Parser Expr
-term = generateRule factor [PLUS,MINUS]
-
-comparison :: Parser Expr
-comparison = generateRule term [GREATER,GREATER_EQUAL,LESS,LESS_EQUAL]
-
-equality :: Parser Expr
-equality = generateRule comparison [BANG_EQUAL,EQUAL_EQUAL]
-
-assignment :: Parser Expr
-assignment xs = case lvalue xs of
-  (Left _) -> equality xs --we couldn't parse an lvalue
-  (Right (name,EQUAL:xs')) -> do
-    (value,xs'') <- assignment xs'
-    return $ (Assignment name value,xs'')
-  (Right _) -> equality xs
-
-inlineif :: Parser Expr
-inlineif (IF:xs) = do
-  result <- assignment xs
-  case result of
-    (cond,THEN:xs') -> do
-      result' <- assignment xs'
-      case result' of
-        (thn,ELSE:xs'') -> do
-          (els,xs''') <- assignment xs''
-          return (InlineIf cond thn els,xs''')
-        _ -> Left "expected else in inline if"
-    _ -> Left "expected then in inline if"
-inlineif xs = assignment xs
-
-expression :: Parser Expr
-expression = inlineif
-
-statement :: Parser Statement
-statement (PRINT:xs) = do
-  case expression xs of
-    (Left errmsg) -> Left errmsg
-    (Right (expr,SEMICOLON:xs')) -> return (Print expr,xs')
-    (Right (_,x:xs)) -> Left $ "Expected semicolon but got '" ++ show x ++ "'"
-statement (VAR:xs) = do
-  result <- lvalue xs
-  case result of
-    (name,SEMICOLON:xs') -> return (Declaration name (Literal Nil),xs')
-    (name,EQUAL:xs') -> do
-      (expr,SEMICOLON:xs'') <- expression xs'
-      return (Declaration name expr,xs'')
-statement (LEFT_BRACE:xs) = do
-  (result,xs') <- aux xs
-  return $ (Compound result,xs')
+lvalue = Name <$> many1 varChar <?> "variable"
   where
-  aux :: Parser [Statement]
-  aux [EOF] = Left "Unterminated compound statement."
-  aux (RIGHT_BRACE:xs) = return ([],xs)
-  aux xs = do
-    (result,xs') <- statement xs
-    (rest,xs'') <- aux xs'
-    return (result:rest,xs'')
-statement (SEMICOLON:xs) = return (Empty,xs)
-statement (IF:LEFT_PAREN:xs) = do
-  (cond,RIGHT_PAREN:xs') <- expression xs
-  (if',xs'') <- statement xs'
-  case xs'' of
-    (ELSE:xs'') -> do
-      (else',xs''') <- statement xs''
-      return (If cond if' else',xs''')
-    (_) -> return (If cond if' Empty,xs'')
-statement (WHILE:xs) = do
-  (cond,xs') <- expression xs
-  (stm,xs'') <- statement xs'
-  return $ (While cond stm,xs'')
-statement (FOR:LEFT_PAREN:xs) = do
-  (initalizer,xs') <- statement xs
-  (check,SEMICOLON:xs'') <- expression xs'
-  (eachloop,RIGHT_PAREN:xs''') <- statement xs''
-  (body,xs'''') <- statement xs'''
-  return $ (Compound [initalizer,While check (Compound [body,eachloop])],xs'''')
-statement (BREAK:SEMICOLON:xs) = return (Break,xs)
-statement xs = do
-  case expression xs of
-    (Left errmsg) -> Left errmsg
-    (Right (expr,SEMICOLON:xs')) -> return (Expression expr,xs')
-    (Right (_,x:xs)) -> Left $ "Expected semicolon but got '" ++ show x ++ "'"
+    varChar = oneOf "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789"
 
-parse :: [Token] -> Either String [Statement]
-parse [EOF] = return []
-parse xs = do
-  (stmt,xs') <- statement xs
-  rest <- parse xs'
-  return $ stmt:rest
+unary = choice [
+  Unary Not <$> (char '!' *> spaces *> unary),
+  Unary Negate <$> (char '-' *> spaces *> unary),
+  primary] <?> "unary expression"
 
-prettyprint :: Either String [Statement] -> String
-prettyprint (Left err) = "Error: " ++ err
-prettyprint (Right (line:xs)) = show line ++ "\n" ++ prettyprint (Right xs)
-prettyprint (Right []) = ""
+factor = genNext [("*",Mul),("/",Div)] unary
+term = genNext [("+",Plus),("-",Minus)] factor
+comparison = genNext [(">=",GrEqual),("<=",LEqual),(">",Greater),("<",Less)] term
+equality = genNext [("==",Equal),("!=",Inequal)] comparison
+
+assignment = Assignment <$> lvalue <*> (spaces *> string "=" *> expr)
+
+inlineif = InlineIf <$> (string "if" *> spaces1 *> expr' <* spaces1)
+                    <*> (string "then" *> spaces1 *> expr' <* spaces1)
+                    <*> (string "else" *> spaces1 *> expr')
+
+expr' = choice [try inlineif,try assignment,try equality]
+expr = pad expr'
+
+statement = (pad $ choice [
+  Print <$> (string "print" *> spaces1 *> expr <* char ';'),
+  char ';' *> pure Empty,
+  (try $ Declaration <$> (string "var" *> spaces1 *> lvalue) <*>
+                  (option (Literal Nil) $ spaces *> char '=' *> expr)
+                  <* char ';'),
+  Compound <$> (char '{' *> many statement <* char '}') <?> "compound statemen",
+  (try $ If <$> (string "if(" *> expr) <*>
+         (char ')' *> statement) <*>
+         (option Empty $ string "else" *> statement)),
+  (try $ While <$> (string "while" *> spaces1 *> expr) <*> statement),
+  (for <$> (string "for(" *> statement) <*>
+        (expr <* char ';') <*>
+        (statement <* char ')') <*>
+        statement) <?> "for loop",
+  (try $ string "break;" *> pure Break),
+  Expression <$> expr <* char ';'])
+
+parsed = parse $ pad $ many statement <* eof

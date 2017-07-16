@@ -64,6 +64,9 @@ data Statement = Empty |
                 While Expr Statement |
                 Break
 
+for :: Statement -> Expr -> Statement -> Statement -> Statement
+for ini check each body = Compound [ini,While check $ Compound [body,each]]
+
 instance Show Statement where
   show (Expression e) = show e ++ ";"
   show (Print e) = "print " ++ show e ++ ";"
