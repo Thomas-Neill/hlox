@@ -1,7 +1,7 @@
 import Interpreter
 import Parser
+import BootstrapAction
 import Action
-import Scanner
 import qualified Data.Map as Map
 import Control.Monad.IO.Class
 import Control.Monad.Trans.State
@@ -29,4 +29,4 @@ loop = do
       loop
   else return ()
 
-main = runStateT (runExceptT  loop) (Global Map.empty)
+main = runStateT (runExceptT (initInterpreter >> loop)) beginState

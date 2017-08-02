@@ -24,24 +24,37 @@ genNext mp pred = pred `chainl1` getOp <?> "expression"
                       Nothing -> error "Impossible"
                       Just r -> r
 
+lvalue = Name <$> varName <?> "variable"
+varName = (:) <$> oneOf alphabet <*> many varChar
+alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"
+varChar = oneOf $ alphabet ++ "0123456789"
+
 primary = choice [
     Literal . Number <$> num,
     Literal . String <$> str,
     try $ Literal . Boolean . (== "true") <$> (string "false" <|> string "true"),
     try $ Literal . const Nil <$> string "nil",
-    fmap Variable lvalue,
+    try $ Rocket <$> varName <*> ((pad $ string "=>") *> expr),
+    Variable <$> lvalue,
     Grouping <$> (char '(' *> expr <* char ')')] <?> "literal, variable or parenthesized expression"
-
-lvalue = Name <$> many1 varChar <?> "variable"
-  where
-    varChar = oneOf "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789"
 
 unary = choice [
   Unary Not <$> (char '!' *> spaces *> unary),
   Unary Negate <$> (char '-' *> spaces *> unary),
   primary] <?> "unary expression"
 
-factor = genNext [("*",Mul),("/",Div)] unary
+funcall' = combine <$> primary <*> many1 argList
+  where
+    argList = char '(' *>
+      (
+        (++) <$> many (try $ expr <* char ',') <*> fmap (:[]) expr <|> pure []
+      )
+      <* char ')'
+    combine = foldl Funcall
+
+funcall = (try funcall') <|> unary
+
+factor = genNext [("*",Mul),("/",Div)] funcall
 term = genNext [("+",Plus),("-",Minus)] factor
 comparison = genNext [(">=",GrEqual),("<=",LEqual),(">",Greater),("<",Less)] term
 equality = genNext [("==",Equal),("!=",Inequal)] comparison
@@ -56,21 +69,21 @@ expr' = choice [try inlineif,try assignment,try equality]
 expr = pad expr'
 
 statement = (pad $ choice [
-  Print <$> (string "print" *> spaces1 *> expr <* char ';'),
+  try $ Print <$> (string "print" *> spaces1 *> expr <* char ';'),
   char ';' *> pure Empty,
-  (try $ Declaration <$> (string "var" *> spaces1 *> lvalue) <*>
+  try $ Declaration <$> (string "var" *> spaces1 *> lvalue) <*>
                   (option (Literal Nil) $ spaces *> char '=' *> expr)
-                  <* char ';'),
-  Compound <$> (char '{' *> many statement <* char '}') <?> "compound statemen",
-  (try $ If <$> (string "if(" *> expr) <*>
+                  <* char ';',
+  Compound <$> (char '{' *> many statement <* char '}'),
+  try $ If <$> (string "if(" *> expr) <*>
          (char ')' *> statement) <*>
-         (option Empty $ string "else" *> statement)),
-  (try $ While <$> (string "while" *> spaces1 *> expr) <*> statement),
-  (for <$> (string "for(" *> statement) <*>
+         (option Empty $ string "else" *> statement),
+  try $ While <$> (string "while" *> spaces1 *> expr <* spaces1) <*> statement,
+  try $ for <$> (string "for(" *> statement) <*>
         (expr <* char ';') <*>
         (statement <* char ')') <*>
-        statement) <?> "for loop",
-  (try $ string "break;" *> pure Break),
+        statement,
+  try $ string "break;" *> pure Break,
   Expression <$> expr <* char ';'])
 
 parsed = parse $ pad $ many statement <* eof

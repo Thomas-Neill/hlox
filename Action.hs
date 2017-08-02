@@ -1,14 +1,12 @@
 module Action where
 
-import qualified Data.Map.Strict as Map
 import Data.List
-import Object
-import Control.Monad.Trans.State
 import Control.Monad.Trans.Except
+import BootstrapAction
+import Object
 
-data LoxEnvironment = Global (Map.Map String LoxObject) | Shadow LoxEnvironment (Map.Map String LoxObject)
-
-type Action a = ExceptT String (StateT LoxEnvironment IO) a
+type Action a = BootAction LoxObject a
+type LoxEnvironment = Environment LoxObject
 
 wrapEither :: Either String a -> Action a
 wrapEither  = either throwE return

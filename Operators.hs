@@ -64,7 +64,6 @@ lookupBin Greater = return gr
 lookupBin Less = return lt
 lookupBin GrEqual = return greq
 lookupBin LEqual = return lteq
-lookupBin _ = Left "not implemented"
 
 loxNot :: LoxObject -> Either String LoxObject
 loxNot x = return $ Boolean $ not $ toBool $ truthiness x
@@ -76,4 +75,3 @@ neg _ = Left "Operation '-' (unary) is only supported for numbers"
 lookupUn :: UnOP -> Either String (LoxObject -> Either String LoxObject)
 lookupUn Not = return loxNot
 lookupUn Negate = return neg
-lookupUn _ = Left "not implemented"

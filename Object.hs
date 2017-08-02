@@ -1,11 +1,31 @@
 module Object where
 
-data LoxObject = String {toString::String} | Number {toDouble::Double} | Boolean {toBool::Bool} | Nil deriving Eq
+import BootstrapAction
+import Control.Monad.Trans.Except
+
+data LoxObject = String {toString::String}
+  | Number {toDouble::Double}
+  | Boolean {toBool::Bool}
+  | Func {call :: [LoxObject] -> BootAction LoxObject LoxObject}
+  | Nil
+
+funcWithArity n f = Func $ \l ->
+                      if length l /= n then
+                        throwE $ "Expected " ++ show n ++ " arguments, got " ++ show (length l)
+                      else f l
+
+instance Eq LoxObject where
+  (String s) == (String s') = s == s'
+  (Number n) == (Number n') = n == n'
+  (Boolean b) == (Boolean b') = b == b'
+  Nil == Nil = True
+  _ == _ = False
 
 instance Show LoxObject where
   show (String s) = s
   show (Number n) = shownum n
   show (Boolean b) = show b
+  show (Func _) = "[Function]"
   show Nil = "nil"
 
 commonStart :: String -> String -> Bool

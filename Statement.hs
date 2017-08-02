@@ -1,5 +1,4 @@
 module Statement where
-import Scanner
 import Object
 
 data UnOP = Not | Negate
@@ -21,30 +20,20 @@ instance Show BinOP where
   show GrEqual = ">="
   show LEqual = "<="
 
-toBin :: Token -> BinOP
-toBin PLUS = Plus
-toBin MINUS = Minus
-toBin STAR = Mul
-toBin SLASH = Div
-toBin EQUAL_EQUAL = Equal
-toBin BANG_EQUAL = Inequal
-toBin GREATER = Greater
-toBin GREATER_EQUAL = GrEqual
-toBin LESS = Less
-toBin LESS_EQUAL = LEqual
-
 data Expr = Literal LoxObject |
             Unary UnOP Expr |
             Grouping Expr |
             Binary Expr BinOP Expr |
             Variable LValue |
             Assignment LValue Expr |
-            InlineIf Expr Expr Expr
+            InlineIf Expr Expr Expr |
+            Funcall Expr [Expr] |
+            Rocket String Expr
 
 data LValue = Name String
 
 instance Show LValue where
-  show (Name s) = '#':s
+  show (Name s) = s
 
 instance Show Expr where
   show (Literal l) = show l
@@ -54,6 +43,7 @@ instance Show Expr where
   show (Variable l) = show l
   show (Assignment l v) = "(set " ++ show l ++ " " ++ show v ++ ")"
   show (InlineIf c i e) = "(if " ++ show c ++ " " ++ show i ++ " " ++ show e ++ ")"
+  show (Funcall name others) = show name ++ "(" ++ concat (fmap ((++",") . show) others) ++ ")"
 
 data Statement = Empty |
                 Expression Expr |
