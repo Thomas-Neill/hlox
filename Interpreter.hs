@@ -140,14 +140,26 @@ evalExpr (Funcall f args) = do
     _ -> throwE "Didn't get function for function call"
 
 evalExpr (Rocket argname body) = do
-  current_scope <- fmap scope $ lift get
+  closure <- fmap scope $ lift get
   return $ funcWithArity 1 $
-    \[arg] -> withTag current_scope $ withShadow $ do
+    \[arg] -> withTag closure $ withShadow $ do
       declare (Name argname) arg
       evalExpr body
 
+evalExpr (Fun argnames body) = do
+  closure <- fmap scope $ lift get
+  return $ funcWithArity (length argnames) $
+    \args -> withTag closure $ withShadow $ do
+      zipWithM_ declare (map Name argnames) args
+      int <- fmap last $ takeUntilM significant $ map eval body
+      case int of
+        None -> return Nil
+        (Result x) -> return x
+        _ -> throwE "Unexpected interrupt in function."
 
-data Interrupt = None | Stop deriving Eq
+
+
+data Interrupt = None | Stop | Result LoxObject deriving Eq
 
 instance Monoid Interrupt where
   mappend None x = x
@@ -177,10 +189,6 @@ eval (Compound stmts) = withShadow $ do
   ints <- takeUntilM significant $ map eval stmts
   return $ last ints
 
-eval Empty = return None
-
-eval Break = return Stop
-
 eval (If cond if' else') = do
   cond' <- evalExpr cond
   eval (if toBool $ truthiness cond' then if' else else')
@@ -197,6 +205,10 @@ eval (While cond body) = do
     else
       eval (While cond body)
   else return None
+
+eval Empty = return None
+eval Break = return Stop
+eval (Return x) = evalExpr x >>= return . Result
 
 initInterpreter :: Action ()
 initInterpreter = do

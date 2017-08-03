@@ -28,7 +28,8 @@ data Expr = Literal LoxObject |
             Assignment LValue Expr |
             InlineIf Expr Expr Expr |
             Funcall Expr [Expr] |
-            Rocket String Expr
+            Rocket String Expr |
+            Fun [String] [Statement]
 
 data LValue = Name String
 
@@ -43,7 +44,9 @@ instance Show Expr where
   show (Variable l) = show l
   show (Assignment l v) = "(set " ++ show l ++ " " ++ show v ++ ")"
   show (InlineIf c i e) = "(if " ++ show c ++ " " ++ show i ++ " " ++ show e ++ ")"
-  show (Funcall name others) = show name ++ "(" ++ concat (fmap ((++",") . show) others) ++ ")"
+  show (Funcall name others) = "(" ++ show name ++ concat (fmap ((' ':) . show) others) ++ ")"
+  show (Rocket string e) = "(\\" ++ string ++ " " ++ show e ++ ")"
+  show (Fun args body) = "(fun " ++ "(" ++ concat (fmap (' ':) args) ++ ")" ++ show body ++ ")"
 
 data Statement = Empty |
                 Expression Expr |
@@ -52,10 +55,14 @@ data Statement = Empty |
                 Compound [Statement] |
                 If Expr Statement Statement |
                 While Expr Statement |
-                Break
+                Break |
+                Return Expr
 
 for :: Statement -> Expr -> Statement -> Statement -> Statement
 for ini check each body = Compound [ini,While check $ Compound [body,each]]
+
+defunc :: String -> [String] -> [Statement] -> Statement
+defunc name args body = Declaration (Name name) (Fun args body)
 
 instance Show Statement where
   show (Expression e) = show e ++ ";"
@@ -66,3 +73,4 @@ instance Show Statement where
   show (If expr i e) = "if(" ++ show expr ++ ") " ++ show i ++ " else " ++ show e
   show (While expr st) = "while " ++ show expr ++ " " ++ show st
   show Break = "break;"
+  show (Return e) = "return " ++ show e ++ ";"
