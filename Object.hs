@@ -6,13 +6,15 @@ import Control.Monad.Trans.Except
 data LoxObject = String {toString::String}
   | Number {toDouble::Double}
   | Boolean {toBool::Bool}
-  | Func {call :: [LoxObject] -> BootAction LoxObject LoxObject}
+  | Func {call :: [LoxObject] -> BootAction LoxObject LoxObject,closure :: Tag}
   | Nil
 
-funcWithArity n f = Func $ \l ->
+closureFuncWithArity cls n f = flip Func cls $ \l ->
                       if length l /= n then
                         throwE $ "Expected " ++ show n ++ " arguments, got " ++ show (length l)
                       else f l
+
+funcWithArity = closureFuncWithArity (Tag [])
 
 instance Eq LoxObject where
   (String s) == (String s') = s == s'
@@ -25,7 +27,7 @@ instance Show LoxObject where
   show (String s) = s
   show (Number n) = shownum n
   show (Boolean b) = show b
-  show (Func _) = "[Function]"
+  show (Func _ _) = "[Function]"
   show Nil = "nil"
 
 commonStart :: String -> String -> Bool

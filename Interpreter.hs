@@ -35,6 +35,9 @@ modifyKey x callback env = do
   val' <- callback val
   replace x val' env
 
+purge :: (Eq k) => [k] -> [(k,v)] -> [(k,v)]
+purge keys env = foldr (\(k,v) env' -> if k `elem` keys then (k,v):env' else env') [] env
+
 find' :: LValue -> LoxEnvironment -> Maybe LoxObject
 find' (Name n) = Map.lookup n
 
@@ -104,6 +107,18 @@ withShadow callback = do
   newTag <- newEnv
   withTag newTag callback
 
+usedEnvs :: Action [Int]
+usedEnvs = do
+  st <- lift get
+  let scp = fromTag $ scope st -- all envs in scope are used
+      --we walk the envs in our scope to find values using envs that we need
+      closures = concat $ map walk $ map (flip lookup' (envs st)) $ scp
+      walk = concat . map getClosures . Map.elems
+      getClosures (Func _ (Tag ts)) = ts
+      getClosures _ = []
+
+  return $ L.nub $ closures ++ scp
+
 -- actual definitions
 evalExpr :: Expr ->  Action LoxObject
 evalExpr (Literal l) = return l
@@ -136,19 +151,19 @@ evalExpr (Funcall f args) = do
   func <- evalExpr f
   args <- mapM evalExpr args
   case func of
-    (Func f) -> f args
+    (Func f _) -> f args
     _ -> throwE "Didn't get function for function call"
 
 evalExpr (Rocket argname body) = do
   closure <- fmap scope $ lift get
-  return $ funcWithArity 1 $
+  return $ closureFuncWithArity closure 1 $
     \[arg] -> withTag closure $ withShadow $ do
       declare (Name argname) arg
       evalExpr body
 
 evalExpr (Fun argnames body) = do
   closure <- fmap scope $ lift get
-  return $ funcWithArity (length argnames) $
+  return $ closureFuncWithArity closure (length argnames) $
     \args -> withTag closure $ withShadow $ do
       zipWithM_ declare (map Name argnames) args
       int <- fmap last $ takeUntilM significant $ map eval body
@@ -210,9 +225,17 @@ eval Empty = return None
 eval Break = return Stop
 eval (Return x) = evalExpr x >>= return . Result
 
+gcSweep = do
+  used <- usedEnvs
+  st <- lift get
+  let newenvs = purge used (envs st)
+  liftIO $ print (envs st)
+  liftIO $ print (newenvs)
+  lift . put $ st {envs = newenvs}
+
 initInterpreter :: Action ()
 initInterpreter = do
   set' "input" input
   where
     set' str x = declare (Name str) x
-    input = funcWithArity 0 (\_ -> fmap String $ liftIO getLine)
+    input = funcWithArity 0 (\[] -> fmap String $ liftIO getLine)

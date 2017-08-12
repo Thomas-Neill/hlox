@@ -14,6 +14,7 @@ evalText input = do
   stmts <- wrapEither $ either (Left . show) (Right) $ parsed "stdin" input
   ints <- mapM eval stmts
   unless (all (not . significant) ints) (throwE "Unexpected top-level interrupt")
+  gcSweep
   return ()
 
 loop :: Action ()
