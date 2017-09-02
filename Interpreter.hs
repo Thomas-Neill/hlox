@@ -38,58 +38,90 @@ modifyKey x callback env = do
 purge :: (Eq k) => [k] -> [(k,v)] -> [(k,v)]
 purge keys env = foldr (\(k,v) env' -> if k `elem` keys then (k,v):env' else env') [] env
 
-find' :: LValue -> LoxEnvironment -> Maybe LoxObject
-find' (Name n) = Map.lookup n
+find' :: String -> LoxEnvironment -> Maybe LoxObject
+find' n = Map.lookup n
 
-find :: LValue -> Action LoxObject
-find lvalue = do
+find :: String -> Action LoxObject
+find n = do
   st <- lift get
   let
     envs' = envs st
     (Tag scope') = scope st
   wrapEither $ --wrap
-    maybe (Left $ "Variable '" ++ show lvalue ++ "' doesn't exist!") Right $
+    maybe (Left $ "Variable '" ++ n ++ "' doesn't exist!") Right $
       join $ L.find isJust $ --find where lookup worked first
-        map (find' lvalue) $ -- try lookup in each
+        map (find' n) $ -- try lookup in each
           map (flip lookup' envs') scope' -- get env list corresponding to scope
 
-set' :: LValue -> LoxObject -> LoxEnvironment -> Maybe LoxEnvironment
-set' (Name n) val env = if n `Map.member` env then Just (Map.insert n val env) else Nothing
+set' :: String -> LoxObject -> LoxEnvironment -> Maybe LoxEnvironment
+set' n val env = if n `Map.member` env then Just (Map.insert n val env) else Nothing
 
-set :: LValue -> LoxObject -> Action ()
-set lval val = do
+set :: String -> LoxObject -> Action ()
+set n val = do
   st <- lift get
   let
     envs' = envs st
     (Tag scope') = scope st
   envs''  <- wrapEither $ -- wrap maybe into monad
-    maybe (Left $ "Variable '" ++ show lval ++ "' doesn't exist!") Right $
+    maybe (Left $ "Variable '" ++ n ++ "' doesn't exist!") Right $
       join $ L.find isJust $ -- find first success
-        map (\k -> modifyKey k (set' lval val) envs') $ scope' --try from inner to outer scope to set it
+        map (\k -> modifyKey k (set' n val) envs') $ scope' --try from inner to outer scope to set it
   lift $ put $ st {envs = envs''}
 
-declare' :: LValue -> LoxObject -> LoxEnvironment -> LoxEnvironment
-declare' (Name n) value env = Map.insert n value env
-
-declare :: LValue -> LoxObject -> Action ()
-declare lval val = do
+declare :: String -> LoxObject -> Action ()
+declare n val = do
   st <- lift get
   let
     envs' = envs st
     (Tag scope') = scope st
-    envs'' = fromJust $ modifyKey (head scope') (Just . declare' lval val) envs'
+    envs'' = fromJust $ modifyKey (head scope') (Just . Map.insert n val) envs'
   lift $ put $ st {envs = envs''}
 
-newEnv :: Action Tag
+--TODO: fix hacky way of loading in envs to get the namespace functions to work
+--they should have types of Tag -> args -> LoxEnvironment -> LoxEnvironment
+
+findLV :: LValue -> Action LoxObject
+findLV (Name n) = find n
+findLV  (Access obj attr) = do
+  obj' <- evalExpr obj
+  st <- lift get
+  let
+    envs' = envs st
+    attrs = lookup' (getEnv obj') envs'
+    lked = Map.lookup attr attrs
+  wrapEither $ maybe (Left $ "Object '" ++ show obj ++ "' doesn't have attribute '" ++ attr ++ "'") Right lked
+
+setLV :: LValue -> LoxObject -> Action ()
+setLV (Name n) v = set n v
+setLV (Access obj attr) val = do
+  obj' <- evalExpr obj
+  st <- lift get
+  let
+    envs' = envs st
+    oldAttrs = lookup' (getEnv obj') envs'
+    envs'' = fromJust $ replace (getEnv obj') (Map.insert attr val oldAttrs) envs'
+  lift $ put st {envs = envs''}
+
+declareLV :: LValue -> LoxObject -> Action ()
+declareLV (Name n) = declare n
+
+newEnv :: Action Int
 newEnv = do
   st <- lift get
   let
     envs' = envs st
-    (Tag scope') = scope st
-    newTag = firstNotIn (map fst envs') [1..]
-    scope'' = Tag $ newTag:scope'
-    envs'' = (newTag,Map.empty):envs'
+    net = firstNotIn (map fst envs') [1..] -- new environment tag
+    envs'' = (net,Map.empty):envs'
   lift $ put $ st {envs = envs''}
+  return net
+
+newTag :: Action Tag
+newTag = do
+  st <- lift get
+  net <- newEnv
+  let
+    (Tag scope') = scope st
+    scope'' = Tag $ net:scope'
   return scope''
 
 withTag :: Tag -> Action a -> Action a
@@ -104,7 +136,7 @@ withTag t callback = do
 
 withShadow :: Action a -> Action a
 withShadow callback = do
-  newTag <- newEnv
+  newTag <- newTag
   withTag newTag callback
 
 usedEnvs :: Action [Int]
@@ -115,6 +147,7 @@ usedEnvs = do
       closures = concat $ map walk $ map (flip lookup' (envs st)) $ scp
       walk = concat . map getClosures . Map.elems
       getClosures (Func _ (Tag ts)) = ts
+      getClosures (Object t) = [t]
       getClosures _ = []
 
   return $ L.nub $ closures ++ scp
@@ -136,11 +169,11 @@ evalExpr (Unary op x) =
     x' <- evalExpr x
     wrapEither $ op' x'
 
-evalExpr (Variable v) = find v
+evalExpr (Variable v) = findLV v
 
 evalExpr (Assignment l obj) = do
     obj' <- evalExpr obj
-    set l obj'
+    setLV l obj'
     return obj'
 
 evalExpr (InlineIf cond thn els) = do
@@ -158,14 +191,14 @@ evalExpr (Rocket argname body) = do
   closure <- fmap scope $ lift get
   return $ closureFuncWithArity closure 1 $
     \[arg] -> withTag closure $ withShadow $ do
-      declare (Name argname) arg
+      declareLV (Name argname) arg
       evalExpr body
 
 evalExpr (Fun argnames body) = do
   closure <- fmap scope $ lift get
   return $ closureFuncWithArity closure (length argnames) $
     \args -> withTag closure $ withShadow $ do
-      zipWithM_ declare (map Name argnames) args
+      zipWithM_ declareLV (map Name argnames) args
       int <- fmap last $ takeUntilM significant $ map eval body
       case int of
         None -> return Nil
@@ -197,7 +230,7 @@ eval (Print e) = do
 
 eval (Declaration l e) = do
   val <- evalExpr e
-  declare l val
+  declareLV l val
   return None
 
 eval (Compound stmts) = withShadow $ do
@@ -229,13 +262,15 @@ gcSweep = do
   used <- usedEnvs
   st <- lift get
   let newenvs = purge used (envs st)
-  liftIO $ print (envs st)
-  liftIO $ print (newenvs)
   lift . put $ st {envs = newenvs}
 
 initInterpreter :: Action ()
 initInterpreter = do
   set' "input" input
+  set' "object" newObject
+  set' "debugenvs" debugEnvs
   where
-    set' str x = declare (Name str) x
-    input = funcWithArity 0 (\[] -> fmap String $ liftIO getLine)
+    set' str x = declareLV (Name str) x
+    input = funcWithArity 0 (\_ -> fmap String $ liftIO getLine)
+    newObject = funcWithArity 0 (\_ -> fmap Object newEnv)
+    debugEnvs = funcWithArity 0 (\_ -> lift (gets envs) >>= liftIO . print >> return Nil)

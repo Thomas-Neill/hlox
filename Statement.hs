@@ -24,17 +24,18 @@ data Expr = Literal LoxObject |
             Unary UnOP Expr |
             Grouping Expr |
             Binary Expr BinOP Expr |
-            Variable LValue |
+            Variable {fromVar :: LValue} |
             Assignment LValue Expr |
             InlineIf Expr Expr Expr |
             Funcall Expr [Expr] |
             Rocket String Expr |
             Fun [String] [Statement]
 
-data LValue = Name String
+data LValue = Name String | Access Expr String
 
 instance Show LValue where
   show (Name s) = s
+  show (Access e s) = "(" ++ show e ++ ")." ++ s
 
 instance Show Expr where
   show (Literal l) = show l

@@ -7,6 +7,7 @@ data LoxObject = String {toString::String}
   | Number {toDouble::Double}
   | Boolean {toBool::Bool}
   | Func {call :: [LoxObject] -> BootAction LoxObject LoxObject,closure :: Tag}
+  | Object {getEnv :: Int}
   | Nil
 
 closureFuncWithArity cls n f = flip Func cls $ \l ->
@@ -28,6 +29,7 @@ instance Show LoxObject where
   show (Number n) = shownum n
   show (Boolean b) = show b
   show (Func _ _) = "[Function]"
+  show (Object _) = "[Object]"
   show Nil = "nil"
 
 commonStart :: String -> String -> Bool

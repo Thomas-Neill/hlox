@@ -6,7 +6,8 @@ import Text.ParserCombinators.Parsec hiding (try)
 
 --helpers
 num :: Parser Double
-num = read <$> many1 (digit <|> char '.')
+num = read <$> (many1 digit <|>
+  ((\x y z-> x ++ y ++ z) <$> many1 digit <*> string "." <*> many1 digit))
 
 str :: Parser [Char]
 str = char '"' *> (many $ noneOf ['"']) <* char '"'
@@ -31,21 +32,34 @@ varChar = oneOf $ alphabet ++ "0123456789"
 
 argListOf :: Parser a -> Parser [a]
 argListOf x = char '(' *>
-            ((++) <$> many (try $ x <* char ',') <*> fmap (:[]) x <|> pure [])
+            ((++) <$> many (try $ x <* char ',') <*> fmap return x <|> pure [])
           <* char ')'
 
 --parsers
-lvalue = Name <$> varName <?> "variable"
+--TODO: Right now, the parsers are a spaghettified mess.
+-- I need to write a cfg and a parser conforming to it.
 
-primary = choice [
+
+var = Name <$> varName
+
+primary' = choice [
     Literal . Number <$> num,
     Literal . String <$> str,
     try $ Literal . Boolean . (== "true") <$> (string "false" <|> string "true"),
     try $ Literal . const Nil <$> string "nil",
     try $ Rocket <$> varName <*> ((pad $ string "=>") *> expr),
     try $ Fun <$> (string "fun" *> spaces *> argListOf varName) <*> (spaces *> char '{' *> many statement <* char '}'),
-    Variable <$> lvalue,
+    Variable <$> var,
     Grouping <$> (char '(' *> expr <* char ')')]
+
+access = do
+  left <- primary'
+  (a:as) <- many (char '.' *> varName)
+  return $ foldl (\acc x -> Access (Variable acc) x) (Access left a) as
+
+primary = (try $ Variable <$> access) <|> primary'
+
+lval = access <|> var
 
 unary = choice [
   Unary Not <$> (char '!' *> spaces *> unary),
@@ -57,7 +71,7 @@ term = genNext [("+",Plus),("-",Minus)] factor
 comparison = genNext [(">=",GrEqual),("<=",LEqual),(">",Greater),("<",Less)] term
 equality = genNext [("==",Equal),("!=",Inequal)] comparison
 
-assignment = Assignment <$> lvalue <*> (spaces *> string "=" *> expr)
+assignment = Assignment <$> lval <*> (spaces *> string "=" *> expr)
 
 inlineif = InlineIf <$> (string "if" *> spaces1 *> expr' <* spaces1)
                     <*> (string "then" *> spaces1 *> expr' <* spaces1)
@@ -68,12 +82,12 @@ funcall = combine <$> primary <*> many1 argList
       argList = argListOf expr
       combine = foldl Funcall
 
-expr' = choice [try inlineif,try assignment,try funcall,try equality]
+expr' = choice [try inlineif, try assignment, try funcall, try equality]
 expr = pad expr'
 
 statement = pad $ choice [
   try $ Print <$> (string "print" *> spaces1 *> expr <* char ';'),
-  try $ Declaration <$> (string "var" *> spaces1 *> lvalue) <*>
+  try $ Declaration <$> (string "var" *> spaces1 *> var) <*>
                   (option (Literal Nil) $ spaces *> char '=' *> expr)
                   <* char ';',
   try $ If <$> (string "if(" *> expr) <*>
