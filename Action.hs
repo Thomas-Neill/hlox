@@ -2,6 +2,7 @@ module Action where
 
 import Data.List
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.State
 import BootstrapAction
 import Object
 
@@ -20,3 +21,6 @@ takeUntilM predicate (x:xs) = do
   else do
     xs' <- takeUntilM predicate xs
     return $ x':xs'
+
+perform :: Action a -> IO ()
+perform a = runStateT (runExceptT a) beginState >> return ()

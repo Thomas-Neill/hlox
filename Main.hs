@@ -30,4 +30,6 @@ loop = do
       loop
   else return ()
 
-main = runStateT (runExceptT (initInterpreter >> loop)) beginState
+main = do
+  contents <- fmap (\(Right x) -> x) $ parsedF "rc.lox"
+  perform $ initInterpreter >> mapM eval contents >> loop

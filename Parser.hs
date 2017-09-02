@@ -12,7 +12,8 @@ num = read <$> (many1 digit <|>
 str :: Parser [Char]
 str = char '"' *> (many $ noneOf ['"']) <* char '"'
 
-spaces1 = many1 space
+whitespace = oneOf " \t\n"
+spaces1 = many1 whitespace
 
 pad :: Parser a -> Parser a
 pad parser = spaces *> parser <* spaces
@@ -32,7 +33,7 @@ varChar = oneOf $ alphabet ++ "0123456789"
 
 argListOf :: Parser a -> Parser [a]
 argListOf x = char '(' *>
-            ((++) <$> many (try $ x <* char ',') <*> fmap return x <|> pure [])
+            pad ((++) <$> many (try . pad $ x <* char ',') <*> fmap return x <|> pure [])
           <* char ')'
 
 --parsers
@@ -110,3 +111,5 @@ statement = pad $ choice [
   char ';' *> pure Empty]
 
 parsed = parse $ pad $ many statement <* eof
+
+parsedF = parseFromFile (pad $ many statement <* eof)
