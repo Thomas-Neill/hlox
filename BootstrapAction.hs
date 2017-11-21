@@ -11,9 +11,10 @@ type Environment a = Map.Map String a
 --right side is inner, left is outer
 newtype Tag = Tag {fromTag :: [Int]} deriving Show
 data LoxState a = LoxState {envs :: [(Int,Environment a)],
-                            scope :: Tag} deriving Show
+                            scope :: Tag,
+                            untilNextSweep :: Int} deriving Show
 
-beginState = LoxState [(0,Map.empty)] (Tag [0])
+beginState = LoxState [(0,Map.empty)] (Tag [0]) 5 -- 5 statements
 
 type BootAction l a = ExceptT String (StateT (LoxState l) IO) a
 

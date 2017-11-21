@@ -14,8 +14,7 @@ failmsg op a b = "Operation '" ++ op ++ "' is not supported with objects " ++ sh
 
 add :: LoxObject -> LoxObject -> Either String LoxObject
 add (Number n) (Number n') = return $ Number $ n + n'
-add (String s) (String s') = return $ String $ s ++ s'
-add a b = Left $ failmsg "+" a b
+add x y = return $ String $ (show x) ++ (show y)
 
 mul :: LoxObject -> LoxObject -> Either String LoxObject
 mul (Number n) (Number n') = return $ Number $ n * n'

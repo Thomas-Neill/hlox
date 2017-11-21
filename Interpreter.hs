@@ -90,7 +90,12 @@ evalExpr (Fun argnames body) = do
         (Result x) -> return x
         _ -> throwE "Unexpected interrupt in function."
 
-
+evalExpr (CreateObject nops) = do
+  new <- newTag
+  withTag new $ flip mapM_ nops $ \(name,val) -> do
+    val' <- evalExpr val
+    declare name val'
+  return $ Object (head $ fromTag new)
 
 data Interrupt = None | Stop | Result LoxObject deriving Eq
 
@@ -143,6 +148,16 @@ eval Empty = return None
 eval Break = return Stop
 eval (Return x) = evalExpr x >>= return . Result
 
+tryGcSweep = do
+  til <- lift $ gets untilNextSweep
+  til' <-
+    if til == 0 then do
+      gcSweep
+      return 5
+    else if til == -1 then return (-1)
+    else return (til - 1)
+  lift $ modify $ \st -> st {untilNextSweep = til'}
+
 gcSweep = do
   used <- usedEnvs
   st <- lift get
@@ -154,8 +169,16 @@ initInterpreter = do
   set' "input" input
   set' "object" newObject
   set' "debugenvs" debugEnvs
+  set' "scopeasobj" scopeAsObject
+  set' "sweep" forceSweep
+  set' "sweepon" yesSweep
+  set' "sweepoff" noSweep
   where
     set' str x = declareLV (Name str) x
     input = funcWithArity 0 (\_ -> fmap String $ liftIO getLine)
     newObject = funcWithArity 0 (\_ -> fmap Object newEnv)
     debugEnvs = funcWithArity 0 (\_ -> lift (gets envs) >>= liftIO . print >> return Nil)
+    scopeAsObject = funcWithArity 0 (\_ -> fmap (Object . head. fromTag) (lift $ gets scope))
+    forceSweep = funcWithArity 0 (\_ -> gcSweep >> return Nil)
+    noSweep = funcWithArity 0 (\_ -> lift $ modify (\st -> st {untilNextSweep = -1}) >> return Nil)
+    yesSweep = funcWithArity 0 (\_ -> lift $ modify (\st -> st {untilNextSweep = 5}) >> return Nil)

@@ -1,0 +1,59 @@
+print "EX1: printing the fibs";
+var a = 0;
+var b = 1;
+for(var counter = 0; counter < 10; counter = counter + 1;) {
+  print a;
+  var swap = b;
+  b = a + b;
+  a = swap;
+}
+
+print "EX2: Vectors";
+
+def Vector(x,y) {
+  def magnitude() {
+    return x*x + y*y;
+  }
+  def print() {
+    print x + "i + " + y + "j";
+  }
+  "scopeasobj returns an object with the variables of the current scope as members";
+  "also there aren't any comments so I have to do this sorry";
+  return scopeasobj();
+}
+
+var v = Vector(3,4);
+print v.magnitude();
+v.print();
+print v.x;
+
+print "EX3: Some Inheritance";
+
+def Animal(name,this) {
+  this.name = name;
+  this.sayHelloTo = fun(person) {
+    print this.name + " says "+ this.sound + " to " + person + "!";
+  };
+  return this;
+}
+
+def Dog(name,this) {
+  Animal(name,this);
+  this.sound = "bork";
+  return this;
+}
+
+def Cat(name,purrs,this) {
+  Animal(name,this);
+  if(purrs) this.sound = "purr";
+  else this.sound = "meow";
+  return this;
+}
+
+var doggy = Dog("Rufus",object());
+var kitty = Cat("Felix",true,|owner:"nobody"|);
+"The above is an object literal";
+print "What is your name?";
+var you = input();
+doggy.sayHelloTo(you);
+kitty.sayHelloTo(you);

@@ -6,11 +6,12 @@ import Text.ParserCombinators.Parsec hiding (try)
 
 --helpers
 num :: Parser Double
-num = read <$> (many1 digit <|>
-  ((\x y z-> x ++ y ++ z) <$> many1 digit <*> string "." <*> many1 digit))
+num = fmap read $ (++) <$> many1 digit <*> (option "" $ (:) <$> char '.' <*> many1 digit)
 
 str :: Parser [Char]
 str = char '"' *> (many $ noneOf ['"']) <* char '"'
+
+tstring = try . string
 
 whitespace = oneOf " \t\n"
 spaces1 = many1 whitespace
@@ -33,7 +34,7 @@ varChar = oneOf $ alphabet ++ "0123456789"
 
 argListOf :: Parser a -> Parser [a]
 argListOf x = char '(' *>
-            pad ((++) <$> many (try . pad $ x <* char ',') <*> fmap return x <|> pure [])
+            pad ((pad x) `sepBy` char ',')
           <* char ')'
 
 --parsers
@@ -46,11 +47,15 @@ var = Name <$> varName
 primary' = choice [
     Literal . Number <$> num,
     Literal . String <$> str,
-    try $ Literal . Boolean . (== "true") <$> (string "false" <|> string "true"),
-    try $ Literal . const Nil <$> string "nil",
-    try $ Rocket <$> varName <*> ((pad $ string "=>") *> expr),
-    try $ Fun <$> (string "fun" *> spaces *> argListOf varName) <*> (spaces *> char '{' *> many statement <* char '}'),
+    Literal . Boolean . (== "true") <$> (tstring "false" <|> tstring "true"),
+    Literal . const Nil <$> tstring "nil",
+    Rocket <$> (char '[' *> spaces *> varName) <*> ((pad $ string "=>") *> expr <* char ']'),
+    Fun <$> (tstring "fun" *> spaces *> argListOf varName) <*> (spaces *> char '{' *> many statement <* char '}'),
     Variable <$> var,
+    CreateObject <$> (
+      char '|' *> spaces *>
+        ((,) <$> (spaces *> varName) <*> (spaces *> char ':' *> expr)) `sepBy` (char ',')
+      <* spaces <* char '|'),
     Grouping <$> (char '(' *> expr <* char ')')]
 
 access = do
@@ -60,7 +65,7 @@ access = do
 
 primary = (try $ Variable <$> access) <|> primary'
 
-lval = access <|> var
+lval = (try access) <|> var
 
 unary = choice [
   Unary Not <$> (char '!' *> spaces *> unary),
@@ -83,27 +88,27 @@ funcall = combine <$> primary <*> many1 argList
       argList = argListOf expr
       combine = foldl Funcall
 
-expr' = choice [try inlineif, try assignment, try funcall, try equality]
+expr' = choice [try inlineif, try assignment, try funcall, equality]
 expr = pad expr'
 
 statement = pad $ choice [
-  try $ Print <$> (string "print" *> spaces1 *> expr <* char ';'),
-  try $ Declaration <$> (string "var" *> spaces1 *> var) <*>
+  Print <$> (tstring "print" *> spaces1 *> expr <* char ';'),
+  Declaration <$> (tstring "var" *> spaces1 *> var) <*>
                   (option (Literal Nil) $ spaces *> char '=' *> expr)
                   <* char ';',
-  try $ If <$> (string "if(" *> expr) <*>
+  If <$> (tstring "if(" *> expr) <*>
          (char ')' *> statement) <*>
          (option Empty $ string "else" *> statement),
-  try $ While <$> (string "while" *> spaces1 *> expr <* spaces1) <*> statement,
-  try $ for <$> (string "for(" *> statement) <*>
+  While <$> (tstring "while" *> char '(' *> expr <* char ')') <*> statement,
+  for <$> (tstring "for(" *> statement) <*>
         (expr <* char ';') <*>
         (statement <* char ')') <*>
         statement,
-  try $ string "break;" *> pure Break,
-  try $ Return <$> (string "return" *> spaces1 *> expr <* char ';'),
-  try $ Return <$> (string "return" *> spaces *> char ';' *> pure (Literal Nil)),
-  try $ defunc <$>
-    (string "def" *> spaces1 *> varName ) <*>
+  tstring "break;" *> pure Break,
+  Return <$> (tstring "return;" *> pure (Literal Nil)),
+  Return <$> (tstring "return" *> spaces1 *> expr <* char ';'),
+  defunc <$>
+    (tstring "def" *> spaces1 *> varName ) <*>
     (spaces *> argListOf varName <* spaces) <*>
     (char '{' *> many statement <* char '}'),
   Compound <$> (char '{' *> many statement <* char '}'),

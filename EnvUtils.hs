@@ -110,7 +110,7 @@ usedEnvs = do
   st <- lift get
   let scp = fromTag $ scope st -- all envs in scope are used
       --we walk the envs in our scope to find values using envs that we need
-      closures = concat $ map walk $ map snd (envs st)
+      closures = concat $ map walk $ map snd (envs st) 
       walk = concat . map getClosures . Map.elems
       getClosures (Func _ (Tag ts)) = ts
       getClosures (Object t) = [t]

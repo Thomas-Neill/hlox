@@ -8,6 +8,8 @@ import Control.Monad.Trans.State
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad
+import System.Environment
+import System.Exit
 
 evalText :: String -> Action ()
 evalText input = do
@@ -32,4 +34,14 @@ loop = do
 
 main = do
   contents <- fmap (\(Right x) -> x) $ parsedF "rc.lox"
-  perform $ initInterpreter >> mapM eval contents >> loop
+  args <- getArgs
+  case args of
+    [] -> perform $ initInterpreter >> mapM eval contents >> loop
+    [fname] -> do
+      result <- parsedF fname
+      case result of
+        (Right contents2) -> perform $ do
+          initInterpreter
+          mapM (\x -> eval x >> tryGcSweep) contents
+          mapM (\x -> (eval x >> tryGcSweep) `catchE` (\err -> liftIO $ die err)) contents2
+        (Left err) -> print err

@@ -1,7 +1,3 @@
 def print(x) {
   print x;
 }
-
-def bound(method, this) {
-  return method(this);
-}

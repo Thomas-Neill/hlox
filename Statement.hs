@@ -29,7 +29,8 @@ data Expr = Literal LoxObject |
             InlineIf Expr Expr Expr |
             Funcall Expr [Expr] |
             Rocket String Expr |
-            Fun [String] [Statement]
+            Fun [String] [Statement] |
+            CreateObject [(String,Expr)]
 
 data LValue = Name String | Access Expr String
 
@@ -47,7 +48,7 @@ instance Show Expr where
   show (InlineIf c i e) = "(if " ++ show c ++ " " ++ show i ++ " " ++ show e ++ ")"
   show (Funcall name others) = "(" ++ show name ++ concat (fmap ((' ':) . show) others) ++ ")"
   show (Rocket string e) = "(\\" ++ string ++ " " ++ show e ++ ")"
-  show (Fun args body) = "(fun " ++ "(" ++ concat (fmap (' ':) args) ++ ")" ++ show body ++ ")"
+  show (Fun args body) = "(fun " ++ "(" ++ concat (fmap (++" ") args) ++ ")" ++ show body ++ ")"
 
 data Statement = Empty |
                 Expression Expr |
